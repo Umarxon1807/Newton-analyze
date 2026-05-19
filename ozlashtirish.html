@@ -54,65 +54,141 @@ const ld  = k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;
 const sv  = (k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 const fmt = d=>d?d.slice(5):"";
 
-// ─── CSV Parser (Intensiv format) ─────────────────────────────────────────────
-// Expected: row0=title, row1=subject headers, row2=col headers, row3+=data
-// Cols: #, F.I.O, Filial, Guruh, MathBall, MathFoiz, MuammoBall, MuammoFoiz, JamiFoiz
+// ─── Name normalization (Cyrillic ↔ Latin ↔ mixed) ───────────────────────────
+// Convert Cyrillic letters to Latin equivalents for comparison
+const CYR_TO_LAT={
+  'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g',
+  'Д':'D','д':'d','Е':'E','е':'e','Ё':'E','ё':'e','Ж':'Zh','ж':'zh',
+  'З':'Z','з':'z','И':'I','и':'i','Й':'Y','й':'y','К':'K','к':'k',
+  'Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n','О':'O','о':'o',
+  'П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
+  'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts',
+  'Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh','Щ':'Sh','щ':'sh','Ъ':'','ъ':'',
+  'Ы':'I','ы':'i','Ь':'','ь':'','Э':'E','э':'e','Ю':'Yu','ю':'yu',
+  'Я':'Ya','я':'ya','Ў':'O\'','ў':'o\'','Қ':'Q','қ':'q','Ғ':'G\'','ғ':'g\'',
+  'Ҳ':'H','ҳ':'h','Ъ':'\'','ъ':'\'',
+};
+function normName(name){
+  if(!name)return"";
+  let s=name.trim();
+  // transliterate Cyrillic to Latin
+  let res="";
+  for(const ch of s){res+=CYR_TO_LAT[ch]!==undefined?CYR_TO_LAT[ch]:ch;}
+  // normalize: lowercase, collapse spaces, remove apostrophes/quotes for comparison
+  return res.toLowerCase().replace(/['`ʼ'']/g,"").replace(/\s+/g," ").trim();
+}
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
 function splitCSVLine(line){
   const r=[];let cur="",inQ=false;
   for(const c of line){if(c==='"'){inQ=!inQ;continue;}if(c===','&&!inQ){r.push(cur);cur="";continue;}cur+=c;}
   r.push(cur);return r;
 }
 
+// Detect which subject is in which column by reading header rows
+// Returns: {mathCol, inglizCol, muammoCol, jamiCol, nameCol, filialCol, guruhCol}
+function detectColumns(lines){
+  // Default mapping (your current CSV format)
+  let cols={nameCol:1,filialCol:2,guruhCol:3,mathFoizCol:5,inglizFoizCol:-1,muammoFoizCol:7,jamiFoizCol:8};
+
+  // Look at rows 1-3 for subject headers
+  for(let i=0;i<Math.min(4,lines.length);i++){
+    const row=splitCSVLine(lines[i]).map(c=>c.toLowerCase().trim());
+    for(let j=0;j<row.length;j++){
+      const cell=row[j];
+      if(cell.includes("matematik") || cell.includes("математик")){
+        // next col with "foiz" or "%" or just next = ball, one after = foiz
+        cols.mathFoizCol=j+1; // foiz is usually ball+1
+      }
+      if(cell.includes("ingliz") || cell.includes("англий")){
+        cols.inglizFoizCol=j+1;
+      }
+      if(cell.includes("muammo") || cell.includes("tanqid") || cell.includes("муамм")){
+        cols.muammoFoizCol=j+1;
+      }
+      if(cell.includes("jami") || cell.includes("итого") || cell.includes("общ")){
+        cols.jamiFoizCol=j;
+      }
+    }
+  }
+  return cols;
+}
+
 function parseCSV(text){
   const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
   const result=[];
-  // find data start (skip header rows)
-  let dataStart=3;
-  for(let i=0;i<Math.min(5,lines.length);i++){
-    const cols=splitCSVLine(lines[i]);
-    if(cols[1]&&cols[1].trim()&&isNaN(Number(cols[1].trim().charAt(0)))&&i>0){
-      // looks like a name row
-      dataStart=i;break;
-    }
+  if(lines.length<2)return result;
+
+  // detect columns from headers
+  const C=detectColumns(lines);
+
+  // find data start: first row where col[nameCol] looks like a name (not a header)
+  let dataStart=1;
+  for(let i=0;i<Math.min(6,lines.length);i++){
+    const row=splitCSVLine(lines[i]);
+    const cell=(row[C.nameCol]||"").trim();
+    // name row: not empty, not a known header keyword, contains space (firstname lastname)
+    const isHeader=!cell||["f.i.o","исм","ism","фио","ф.и.о","name","имя"].some(h=>cell.toLowerCase().includes(h));
+    if(cell&&!isHeader){dataStart=i;break;}
   }
+
   for(let i=dataStart;i<lines.length;i++){
     const c=splitCSVLine(lines[i]);
-    const name=(c[1]||"").trim();
+    const name=(c[C.nameCol]||"").trim();
     if(!name)continue;
-    const mB =parseFloat((c[4]||"0").replace(",","."))||0;
-    const mF =parseFloat((c[5]||"0").replace(",","."))||0;
-    const mmB=parseFloat((c[6]||"0").replace(",","."))||0;
-    const mmF=parseFloat((c[7]||"0").replace(",","."))||0;
-    const jami=parseFloat((c[8]||"0").replace(",","."))||0;
-    const date=(c[9]||"").trim(); // optional date column
-    if(mB===0&&mmB===0&&jami===0)continue;
-    result.push({name,filial:(c[2]||"").trim(),guruh:(c[3]||"").trim(),
-      math:{ball:mB,foiz:mF},muammo:{ball:mmB,foiz:mmF},jami,date});
+
+    const getNum=idx=>{
+      if(idx<0||idx>=c.length)return 0;
+      return parseFloat((c[idx]||"0").replace(",","."))||0;
+    };
+
+    const mathF  = getNum(C.mathFoizCol);
+    const inglizF= getNum(C.inglizFoizCol);
+    const muammoF= getNum(C.muammoFoizCol);
+    const jamiF  = getNum(C.jamiFoizCol);
+
+    if(mathF===0&&inglizF===0&&muammoF===0&&jamiF===0)continue;
+
+    result.push({
+      name,
+      filial:(c[C.filialCol]||"").trim(),
+      guruh :(c[C.guruhCol]||"").trim(),
+      mathF, inglizF, muammoF, jamiF,
+    });
   }
   return result;
 }
 
 // ─── Merge CSV rows into existing students (ADDITIVE) ─────────────────────────
 function mergeCSVIntoStudents(csvRows, existingStudents, sessionDate){
-  const result=[...existingStudents];
+  const result=existingStudents.map(s=>({
+    ...s,
+    scores:s.scores.map(a=>[...a]),
+    days:(s.days||[[],[],[]]).map(a=>[...a]),
+  }));
+
   for(const row of csvRows){
-    const idx=result.findIndex(s=>s.name.toLowerCase()===row.name.toLowerCase());
-    const d=sessionDate||row.date||"";
-    // Build score entries: math=scores[0], muammo=scores[2], ingliz=scores[1] (not in CSV)
+    const d=sessionDate||"";
+    const normRow=normName(row.name);
+
+    // Find existing student by normalized name comparison
+    const idx=result.findIndex(s=>normName(s.name)===normRow);
+
     if(idx>=0){
-      // existing student — append scores
       const s=result[idx];
       const days=s.days||[[],[],[]];
-      if(row.math.foiz>0){s.scores[0].push(row.math.foiz);days[0].push(d);}
-      if(row.muammo.foiz>0){s.scores[2].push(row.muammo.foiz);days[2].push(d);}
+      // scores[0]=Matematika, scores[1]=Ingliz tili, scores[2]=Muammoni hal qilish
+      if(row.mathF>0)  {s.scores[0].push(row.mathF);  days[0].push(d);}
+      if(row.inglizF>0){s.scores[1].push(row.inglizF);days[1].push(d);}
+      if(row.muammoF>0){s.scores[2].push(row.muammoF);days[2].push(d);}
       s.days=days;
       result[idx]=s;
     } else {
-      // new student
       const scores=[[],[],[]];
       const days=[[],[],[]];
-      if(row.math.foiz>0){scores[0].push(row.math.foiz);days[0].push(d);}
-      if(row.muammo.foiz>0){scores[2].push(row.muammo.foiz);days[2].push(d);}
+      if(row.mathF>0)  {scores[0].push(row.mathF);  days[0].push(d);}
+      if(row.inglizF>0){scores[1].push(row.inglizF);days[1].push(d);}
+      if(row.muammoF>0){scores[2].push(row.muammoF);days[2].push(d);}
       result.push({id:uid(),name:row.name,filial:row.filial,guruh:row.guruh,scores,days});
     }
   }
