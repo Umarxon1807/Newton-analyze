@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="O'zlashtirish"/>
+<meta name="theme-color" content="#07070f"/>
+<title>O'zlashtirish Tahlili</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{min-height:100%;background:#07070f;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden}
+input,button{font-family:inherit}
+button{cursor:pointer}
+::-webkit-scrollbar{width:0;height:0}
+.pill{width:44px;height:44px;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.inp{width:100%;background:#07070f;border:1.5px solid #2a2a45;color:#e2e8f0;border-radius:10px;padding:11px 14px;font-size:14px;outline:none;-webkit-appearance:none}
+.inp:focus{border-color:#a78bfa}
+.sheet-bg{position:fixed;inset:0;background:#07070fcc;backdrop-filter:blur(8px);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#0b0b18;border:1.5px solid #2a2a45;border-radius:22px 22px 0 0;padding:22px 18px 48px;width:100%;max-width:480px;max-height:92vh;overflow-y:auto}
+.overlay{position:fixed;inset:0;background:#07070fdd;backdrop-filter:blur(10px);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#0b0b18;border:1.5px solid #2a2a45;border-radius:22px;padding:20px 16px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+.icon-btn{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;flex-shrink:0;border:1px solid transparent}
+.btn-grad{width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:12px;padding:13px;font-weight:700;font-size:14px}
+@keyframes zoomIn{from{transform:scale(.75) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.anim-zoom{animation:zoomIn .25s cubic-bezier(.34,1.56,.64,1)}
+.anim-up{animation:slideUp .28s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<input type="file" id="csvFileInp" accept=".csv" style="display:none"/>
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const SUBJECTS = ["Matematika","Ingliz tili","Muammoni hal qilish"];
+const COLORS   = ["#34d399","#60a5fa","#f472b6"];
+const SC       = ["Matematik","Ingliz","Tanqidiy"];
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+const uid   = ()=>Math.random().toString(36).slice(2,9);
+const avg   = a=>a&&a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):0;
+const ovAvg = s=>Math.min(100,Math.round(SUBJECTS.reduce((sum,_,i)=>sum+avg(s.scores[i]),0)/3));
+const grade = v=>v>=85?{l:"A'lo",c:"#34d399"}:v>=70?{l:"Yaxshi",c:"#60a5fa"}:v>=55?{l:"Qoniqarli",c:"#fbbf24"}:{l:"Qoniqarsiz",c:"#f87171"};
+const parseF= str=>{
+  const s=str.trim();
+  if(s.includes("/")){const[a,b]=s.split("/").map(Number);if(!isNaN(a)&&!isNaN(b)&&b>0)return Math.min(100,Math.round(a/b*100));}
+  const n=Number(s);return(!isNaN(n)&&n>=0&&n<=100)?Math.round(n):null;
+};
+const esc = s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const ld  = k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}};
+const sv  = (k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+const fmt = d=>d?d.slice(5):"";
+
+// ─── Name normalization (Cyrillic ↔ Latin ↔ mixed) ───────────────────────────
+// Convert Cyrillic letters to Latin equivalents for comparison
+const CYR_TO_LAT={
+  'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g',
+  'Д':'D','д':'d','Е':'E','е':'e','Ё':'E','ё':'e','Ж':'Zh','ж':'zh',
+  'З':'Z','з':'z','И':'I','и':'i','Й':'Y','й':'y','К':'K','к':'k',
+  'Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n','О':'O','о':'o',
+  'П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
+  'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts',
+  'Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh','Щ':'Sh','щ':'sh','Ъ':'','ъ':'',
+  'Ы':'I','ы':'i','Ь':'','ь':'','Э':'E','э':'e','Ю':'Yu','ю':'yu',
+  'Я':'Ya','я':'ya','Ў':'O\'','ў':'o\'','Қ':'Q','қ':'q','Ғ':'G\'','ғ':'g\'',
+  'Ҳ':'H','ҳ':'h','Ъ':'\'','ъ':'\'',
+};
+function normName(name){
+  if(!name)return"";
+  let s=name.trim();
+  // transliterate Cyrillic to Latin
+  let res="";
+  for(const ch of s){res+=CYR_TO_LAT[ch]!==undefined?CYR_TO_LAT[ch]:ch;}
+  // normalize: lowercase, collapse spaces, remove apostrophes/quotes for comparison
+  return res.toLowerCase().replace(/['`ʼ'']/g,"").replace(/\s+/g," ").trim();
+}
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
+function splitCSVLine(line){
+  const r=[];let cur="",inQ=false;
+  for(const c of line){if(c==='"'){inQ=!inQ;continue;}if(c===','&&!inQ){r.push(cur);cur="";continue;}cur+=c;}
+  r.push(cur);return r;
+}
+
+// Detect subject columns — reads row1 (subject names) and row2 (ball/foiz)
+// All CSVs have same structure: col4=ball, col5=foiz, col6=ball, col7=foiz, col8=jami
+// Only difference: col4-5 subject vs col6-7 subject name
+function detectColumns(lines){
+  const cols={
+    nameCol:1, filialCol:2, guruhCol:3,
+    sub1FoizCol:5,  // first subject foiz (always Matematika)
+    sub2FoizCol:7,  // second subject foiz (Ingliz tili OR Muammoli masalalar)
+    jamiFoizCol:8,
+    sub2Name:"muammo", // "ingliz" or "muammo"
+    dateStr:"",
+  };
+
+  // Extract date from row0
+  if(lines.length>0){
+    const d=lines[0].split(",")[0].trim();
+    // e.g. "01.05.2026-2.05.2026 Natijalar" or "08.05.2026 Natijalar"
+    // take first date part
+    const dm=d.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if(dm) cols.dateStr=`${dm[3]}-${dm[2]}-${dm[1]}`; // YYYY-MM-DD
+  }
+
+  // Read row1 to find second subject name
+  if(lines.length>1){
+    const row1=lines[1].toLowerCase();
+    if(row1.includes("ingliz")||row1.includes("англий")||row1.includes("english")){
+      cols.sub2Name="ingliz";
+    } else if(row1.includes("muammo")||row1.includes("танқид")||row1.includes("муамм")){
+      cols.sub2Name="muammo";
+    }
+  }
+
+  // Handle "Sinf" vs "Guruh" in col3 — doesn't matter, both are class/group
+  return cols;
+}
+
+function parseCSV(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const result=[];
+  if(lines.length<3)return result;
+
+  const C=detectColumns(lines);
+
+  // Data starts at row3 (0-indexed)
+  const dataStart=3;
+
+  for(let i=dataStart;i<lines.length;i++){
+    const c=splitCSVLine(lines[i]);
+    const name=(c[C.nameCol]||"").trim();
+    if(!name)continue;
+
+    const getF=idx=>{
+      if(idx<0||idx>=c.length)return 0;
+      const v=parseFloat((c[idx]||"0").replace(",","."))||0;
+      return Math.min(100,Math.max(0,v));
+    };
+
+    const mathF  =getF(C.sub1FoizCol);   // always Matematika
+    const sub2F  =getF(C.sub2FoizCol);   // Ingliz OR Muammo
+    const jamiF  =getF(C.jamiFoizCol);
+
+    if(mathF===0&&sub2F===0&&jamiF===0)continue;
+
+    result.push({
+      name,
+      filial:(c[C.filialCol]||"").trim(),
+      guruh :(c[C.guruhCol]||"").trim(),
+      mathF,
+      inglizF : C.sub2Name==="ingliz" ? sub2F : 0,
+      muammoF : C.sub2Name==="muammo" ? sub2F : 0,
+      jamiF,
+      dateStr: C.dateStr,
+    });
+  }
+  return result;
+}
+
+// ─── Merge CSV rows into existing students (ADDITIVE) ─────────────────────────
+function mergeCSVIntoStudents(csvRows, existingStudents, sessionDate){
+  const result=existingStudents.map(s=>({
+    ...s,
+    scores:s.scores.map(a=>[...a]),
+    days:(s.days||[[],[],[]]).map(a=>[...a]),
+  }));
+
+  for(const row of csvRows){
+    // Use manually entered date > CSV date from filename > empty
+    const d=sessionDate||row.dateStr||"";
+    const normRow=normName(row.name);
+    const idx=result.findIndex(s=>normName(s.name)===normRow);
+
+    if(idx>=0){
+      const s=result[idx];
+      const days=s.days||[[],[],[]];
+      if(row.mathF>0)  {s.scores[0].push(row.mathF);  days[0].push(d);}
+      if(row.inglizF>0){s.scores[1].push(row.inglizF);days[1].push(d);}
+      if(row.muammoF>0){s.scores[2].push(row.muammoF);days[2].push(d);}
+      s.days=days;
+      result[idx]=s;
+    } else {
+      const scores=[[],[],[]];
+      const days=[[],[],[]];
+      if(row.mathF>0)  {scores[0].push(row.mathF);  days[0].push(d);}
+      if(row.inglizF>0){scores[1].push(row.inglizF);days[1].push(d);}
+      if(row.muammoF>0){scores[2].push(row.muammoF);days[2].push(d);}
+      result.push({id:uid(),name:row.name,filial:row.filial,guruh:row.guruh,scores,days});
+    }
+  }
+  return result;
+}
+
+// ─── App State ────────────────────────────────────────────────────────────────
+const S={
+  teacher : ld("st_teacher")||"Ustoz",
+  lang    : ld("st_lang")||"uz",
+  students: ld("st_students")||[],
+  search  : "",
+  page    : "list",
+  active  : null,
+  editIdx : null,
+  csvLoading: false,
+  csvErr  : "",
+  showImport: false,
+  importUrl : ld("st_importUrl")||"",
+  selected: [],      // ids of selected students for bulk delete
+  selectMode: false, // is selection mode active
+};
+const setState=(p,noRender)=>{Object.assign(S,p);if(!noRender)render();};
+
+let BUF={entries:[],name:"",teacher:"",editScore:"",editDate:"",importUrl:""};
+function resetBuf(){BUF={entries:[{id:uid(),si:0,score:"",date:""}],name:"",teacher:S.teacher,editScore:"",editDate:"",importUrl:S.importUrl};}
+
+// ─── SVG Chart ────────────────────────────────────────────────────────────────
+function makeSVG(scores,days){
+  if(!scores||!scores.length)return`<div style="color:#2a2a45;text-align:center;padding:22px 0;font-size:12px">Ma'lumot yo'q</div>`;
+  const W=300,H=110,PL=34,PB=22,PT=16,PR=8,cW=W-PL-PR,cH=H-PB-PT;
+  const pts=scores.map((v,i)=>({x:PL+(i/Math.max(scores.length-1,1))*cW,y:PT+cH-(v/100)*cH,v}));
+  const poly=pts.map(p=>`${p.x},${p.y}`).join(" ");
+  const area=`${pts[0].x},${PT+cH} ${poly} ${pts[pts.length-1].x},${PT+cH}`;
+  const grow=scores.length>1&&scores[scores.length-1]>=scores[0];
+  const diff=scores.length>1?Math.round((scores[scores.length-1]-scores[0])/Math.max(scores[0],1)*100):0;
+  const lc=grow?"#34d399":"#f87171",fc=grow?"#34d39918":"#f8717118";
+  const grids=[0,25,50,75,100].map(s=>{const y=PT+cH-(s/100)*cH;return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#1e1e33" stroke-width="1"/><text x="${PL-4}" y="${y+4}" fill="#3a3a5a" font-size="8" text-anchor="end">${s}</text>`;}).join("");
+  const dots=pts.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lc}"/><text x="${p.x}" y="${p.y-6}" fill="${lc}" font-size="7" text-anchor="middle">${p.v}%</text><text x="${p.x}" y="${H-3}" fill="#3a3a5a" font-size="7" text-anchor="middle">${days&&days[i]?days[i]:i+1}</text>`).join("");
+  return`<div style="display:flex;justify-content:flex-end;margin-bottom:3px"><span style="font-size:9px;font-weight:700;color:${lc};background:${lc}22;padding:2px 8px;border-radius:20px">${diff>0?"▲":diff<0?"▼":"—"} ${Math.abs(diff)}%</span></div><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${grids}<polygon points="${area}" fill="${fc}"/><polyline points="${poly}" fill="none" stroke="${lc}" stroke-width="2" stroke-linejoin="round"/>${dots}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#2a2a45" stroke-width="1"/></svg>`;
+}
+
+// ─── Entry rows ───────────────────────────────────────────────────────────────
+function entryRows(){
+  return BUF.entries.map((en,idx)=>`
+  <div style="background:#0f0f1a;border:1px solid #1e1e33;border-radius:12px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:11px;color:#888">${idx+1}-natija</span>
+      ${BUF.entries.length>1?`<span onclick="rmEntry('${en.id}')" style="color:#f87171;font-size:16px;cursor:pointer">✕</span>`:""}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      ${SC.map((lbl,si)=>`<div onclick="pickSi('${en.id}',${si})" style="flex:1;text-align:center;padding:7px 4px;border-radius:8px;font-size:10px;font-weight:600;cursor:pointer;border:1.5px solid ${en.si===si?COLORS[si]:"#1e1e33"};color:${en.si===si?COLORS[si]:"#555"};background:${en.si===si?COLORS[si]+"18":"transparent"}">${lbl}</div>`).join("")}
+    </div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1">
+        <div style="font-size:10px;color:#555;margin-bottom:4px">Natija</div>
+        <input value="${esc(en.score)}" placeholder="12/20 yoki 85" oninput="liveScore('${en.id}',this.value)" style="width:100%;background:#07070f;border:1.5px solid ${COLORS[en.si]}44;color:#e2e8f0;border-radius:8px;padding:9px 10px;font-size:13px;outline:none;font-family:monospace"/>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:10px;color:#555;margin-bottom:4px">Sana</div>
+        <input type="date" value="${en.date}" onchange="liveDate('${en.id}',this.value)" style="width:100%;background:#07070f;border:1.5px solid #2a2a45;color:#888;border-radius:8px;padding:9px 10px;font-size:12px;outline:none"/>
+      </div>
+    </div>
+    <div id="prev_${en.id}" style="margin-top:7px;font-size:10px;color:${COLORS[en.si]}">${en.score&&parseF(en.score)!==null?`→ ${parseF(en.score)}% (${grade(parseF(en.score)).l})`:""}</div>
+  </div>`).join("");
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(){
+  let overlay="";
+  if(S.page==="addStudent")  overlay=renderAddSheet();
+  else if(S.page==="addScore")    overlay=renderScoreSheet();
+  else if(S.page==="detail")      overlay=renderDetail();
+  else if(S.page==="editName")    overlay=renderEditName();
+  else if(S.page==="delConfirm")  overlay=renderDelConfirm();
+  else if(S.page==="editTeacher") overlay=renderTeacher();
+  else if(S.page==="import")      overlay=renderImport();
+  document.getElementById("root").innerHTML=
+    renderHeader()+renderStats()+renderSearch()+
+    `<div style="padding:14px;padding-bottom:40px">${renderList()}</div>`+overlay;
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+function renderHeader(){
+  const ini=S.teacher.trim()?S.teacher.trim()[0].toUpperCase():"U";
+  return`<div style="background:linear-gradient(135deg,#0d0d1f,#12122a);border-bottom:1px solid #1a1a30;padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100">
+    <!-- Circle 1: Teacher -->
+    <div class="pill" onclick="go('editTeacher')" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);font-size:20px;font-weight:900;color:#fff;box-shadow:0 0 0 2px #a78bfa44">${ini}</div>
+    <!-- Circle 2: Add student -->
+    <div class="pill" onclick="go('addStudent')" style="background:#111127;border:2px dashed #a78bfa66;font-size:24px;color:#a78bfa">+</div>
+    <!-- Circle 3: Lang -->
+    <div class="pill" onclick="toggleLang()" style="background:#111127;border:1.5px solid #2a2a45;font-size:10px;font-weight:900;color:#a78bfa">${S.lang==="uz"?"UZ":"RU"}</div>
+    <!-- Title -->
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:900;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${S.lang==="uz"?"O'zlashtirish Tahlili":"Анализ Успеваемости"}</div>
+      <div style="font-size:9px;color:#3a3a5a">${S.lang==="uz"?"Test natijalari asosida":"По результатам тестов"}</div>
+    </div>
+    <!-- CSV button -->
+    <button onclick="document.getElementById('csvFileInp').click()" style="background:#052e16;border:1px solid #34d39944;color:#34d399;border-radius:8px;padding:6px 9px;font-size:11px;font-weight:700;flex-shrink:0" title="CSV yuklash">📂</button>
+    <!-- Link button -->
+    <button onclick="go('import')" style="background:#0d0d2e;border:1px solid #60a5fa44;color:#60a5fa;border-radius:8px;padding:6px 9px;font-size:11px;font-weight:700;flex-shrink:0" title="Link yuklash">🔗</button>
+    <!-- Select mode -->
+    <button onclick="toggleSelectMode()" style="background:${S.selectMode?"#4a1a1a":"#1a1a2e"};border:1px solid ${S.selectMode?"#f8717188":"#2a2a45"};color:${S.selectMode?"#f87171":"#888"};border-radius:8px;padding:6px 9px;font-size:13px;font-weight:700;flex-shrink:0" title="Belgilash">☑</button>
+  </div>
+  ${S.selectMode&&S.selected.length>0?`
+  <div style="background:#1a0a0a;border-top:1px solid #f8717133;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:68px;z-index:99">
+    <div style="font-size:12px;color:#f87171;font-weight:700">${S.selected.length} ta tanlandi</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="selectAll()" style="background:#1a1a2e;border:1px solid #2a2a45;color:#888;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700">Barchasi</button>
+      <button onclick="bulkDelete()" style="background:#dc2626;border:none;color:#fff;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:700">🗑️ O'chir</button>
+    </div>
+  </div>`:""}`;
+
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function renderStats(){
+  const st={
+    total:S.students.length,
+    alo:S.students.filter(s=>ovAvg(s)>=85).length,
+    yaxshi:S.students.filter(s=>ovAvg(s)>=70&&ovAvg(s)<85).length,
+    past:S.students.filter(s=>ovAvg(s)<55).length
+  };
+  return`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 14px 0">
+    ${[["Jami","Всего",st.total,"#a78bfa"],["A'lo","A'lo",st.alo,"#34d399"],["70-84%","70-84%",st.yaxshi,"#60a5fa"],["<55%","<55%",st.past,"#f87171"]].map(([uz,ru,v,c])=>`<div style="background:#0f0f1a;border:1px solid ${c}33;border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:20px;font-weight:900;color:${c};font-family:monospace">${v}</div><div style="font-size:9px;color:#555;margin-top:1px">${S.lang==="uz"?uz:ru}</div></div>`).join("")}
+  </div>`;
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+function renderSearch(){
+  return`<div style="padding:10px 14px 0"><div style="display:flex;align-items:center;gap:10px;background:#0f0f1a;border:1.5px solid #2a2a45;border-radius:999px;padding:10px 18px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input id="searchInp" value="${esc(S.search)}" oninput="doSearch(this.value)" placeholder="${S.lang==="uz"?"O'quvchi qidiring...":"Поиск ученика..."}" style="flex:1;background:transparent;border:none;outline:none;color:#e2e8f0;font-size:13px"/>${S.search?`<span onclick="doSearch('')" style="color:#444;cursor:pointer">✕</span>`:""}</div></div>`;
+}
+
+// ─── Student List ─────────────────────────────────────────────────────────────
+function renderList(){
+  const filtered=S.students.filter(s=>s.name.toLowerCase().includes(S.search.toLowerCase()));
+  if(!filtered.length)return`<div style="text-align:center;color:#2a2a45;padding:56px 0;font-size:13px">${S.students.length===0?"Hali o'quvchi yo'q.\n＋ tugmasi yoki 📂 CSV yuklang":"Hech kim topilmadi"}</div>`;
+  return filtered.map(s=>{
+    const ov=ovAvg(s),g=grade(ov);
+    const isSel=S.selected.includes(s.id);
+    if(S.selectMode){
+      return`<div onclick="toggleSelect('${s.id}')" style="background:${isSel?"#1a0a0a":"#0f0f1a"};border:1.5px solid ${isSel?"#f87171":"#1a1a2e"};border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer">
+        <div style="width:24px;height:24px;border-radius:6px;border:2px solid ${isSel?"#f87171":"#2a2a45"};background:${isSel?"#f87171":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">${isSel?"✓":""}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700;color:${isSel?"#f87171":"#e2e8f0"}">${esc(s.name)}</div>
+          ${s.filial?`<div style="font-size:9px;color:#555;margin-top:2px">${esc(s.filial)}${s.guruh?" • "+esc(s.guruh):""}</div>`:""}
+        </div>
+        <div style="font-size:20px;font-weight:900;color:${isSel?"#f87171":g.c};font-family:monospace">${ov}%</div>
+      </div>`;
+    }
+    return`<div style="background:#0f0f1a;border:1.5px solid #1a1a2e;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <div class="icon-btn" onclick="editName('${s.id}')" style="background:#4f46e522;border-color:#4f46e555">✏️</div>
+        <div class="icon-btn" onclick="delConfirm('${s.id}')" style="background:#dc262622;border-color:#dc262655">🗑️</div>
+      </div>
+      <div onclick="openDetail('${s.id}')" style="flex:1;cursor:pointer">
+        <div style="font-size:15px;font-weight:700;color:#e2e8f0">${esc(s.name)}</div>
+        ${s.filial?`<div style="font-size:9px;color:#555;margin-top:2px">${esc(s.filial)}${s.guruh?" • "+esc(s.guruh):""}</div>`:""}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button onclick="openAddScore('${s.id}')" style="background:#1a1a2e;border:1px solid #2a2a45;color:#a78bfa;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700">+ Ball</button>
+        <div onclick="openDetail('${s.id}')" style="text-align:right;cursor:pointer">
+          <div style="font-size:22px;font-weight:900;color:${g.c};font-family:monospace">${ov}%</div>
+          <div style="font-size:9px;color:${g.c};background:${g.c}22;border-radius:6px;padding:2px 6px">${g.l}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ─── Detail ───────────────────────────────────────────────────────────────────
+function renderDetail(){
+  const s=S.active;if(!s)return"";
+  const ov=ovAvg(s),g=grade(ov);
+  const blocks=SUBJECTS.map((subj,si)=>{
+    const scores=s.scores[si]||[];
+    const days=(s.days&&s.days[si])||[];
+    const sorted=scores.map((v,i)=>({v,d:days[i]||"",i})).sort((a,b)=>a.d.localeCompare(b.d));
+    const ei=S.editIdx;
+    const rows=sorted.map(({v,d,i})=>{
+      if(ei&&ei.si===si&&ei.idx===i){
+        return`<div style="background:${COLORS[si]}0e;border:1px solid ${COLORS[si]}44;border-radius:10px;padding:10px;margin-bottom:6px">
+          <div style="display:flex;gap:8px;margin-bottom:6px">
+            <input id="editScoreInp" value="${esc(BUF.editScore)}" placeholder="12/20 yoki 85" oninput="liveEditScore(this.value)" style="flex:1;background:#07070f;border:1.5px solid ${COLORS[si]};color:#e2e8f0;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:monospace"/>
+            <input type="date" id="editDateInp" value="${BUF.editDate}" onchange="BUF.editDate=this.value" style="flex:1;background:#07070f;border:1.5px solid #2a2a45;color:#888;border-radius:8px;padding:8px 10px;font-size:12px;outline:none"/>
+          </div>
+          <div id="editPrev" style="font-size:10px;color:${COLORS[si]};margin-bottom:6px">${BUF.editScore&&parseF(BUF.editScore)!==null?`→ ${parseF(BUF.editScore)}% (${grade(parseF(BUF.editScore)).l})`:""}</div>
+          <div id="editErr" style="color:#f87171;font-size:10px;margin-bottom:6px;display:none"></div>
+          <div style="display:flex;gap:8px">
+            <button onclick="saveEntryEdit(${si},${i})" style="flex:1;background:${COLORS[si]};color:#000;border:none;border-radius:8px;padding:7px;font-weight:700;font-size:12px">✓ Saqlash</button>
+            <button onclick="cancelEdit()" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:8px;padding:7px;font-size:12px">Bekor</button>
+          </div>
+        </div>`;
+      }
+      return`<div style="display:flex;align-items:center;gap:8px;background:#0f0f1a;border-radius:10px;padding:8px 12px;margin-bottom:6px">
+        <div style="flex:1"><span style="font-family:monospace;font-weight:700;color:${COLORS[si]};font-size:14px">${v}%</span>${d?`<span style="font-size:10px;color:#444;margin-left:8px">${fmt(d)}</span>`:""}</div>
+        <div class="icon-btn" onclick="startEdit(${si},${i},${v},'${d}')" style="background:#4f46e522;border-color:#4f46e544">✏️</div>
+        <div class="icon-btn" onclick="delEntry(${si},${i})" style="background:#dc262622;border-color:#dc262644">🗑️</div>
+      </div>`;
+    }).join("");
+    return`<div style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:700;color:${COLORS[si]}">${subj}</span>
+        <span style="font-size:10px;color:#555;font-family:monospace">o'rta: ${avg(scores)}%</span>
+      </div>
+      <div style="background:#07070f;border-radius:12px;padding:8px;margin-bottom:8px;overflow-x:auto">${makeSVG(sorted.map(x=>x.v),sorted.map(x=>fmt(x.d)))}</div>
+      ${rows}
+    </div>`;
+  }).join("");
+  return`<div class="overlay" onclick="back()"><div class="modal anim-zoom" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+      <div>
+        <div style="font-size:19px;font-weight:900;color:#e2e8f0">${esc(s.name)}</div>
+        ${s.filial?`<div style="font-size:10px;color:#555;margin-top:2px">${esc(s.filial)}${s.guruh?" • "+esc(s.guruh):""}</div>`:""}
+        <div style="font-size:10px;color:#3a3a5a;margin-top:2px">Butun davr tahlili</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:28px;font-weight:900;color:${g.c};font-family:monospace">${ov}%</div>
+        <div style="font-size:10px;color:${g.c};background:${g.c}22;border-radius:6px;padding:2px 8px">${g.l}</div>
+      </div>
+    </div>
+    ${blocks}
+    <button onclick="back()" style="width:100%;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:10px;padding:10px;font-size:12px;margin-top:4px">Yopish ✕</button>
+  </div></div>`;
+}
+
+// ─── Import Sheet (CSV link) ───────────────────────────────────────────────────
+function renderImport(){
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet anim-up" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 20px"></div>
+    <div style="font-size:17px;font-weight:900;color:#e2e8f0;margin-bottom:6px">📊 CSV / Sheets yuklash</div>
+    <div style="font-size:11px;color:#555;margin-bottom:16px">Har safar yangi CSV ma'lumotlar avvalgilarga <span style="color:#34d399">qo'shiladi</span></div>
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:#60a5fa;margin-bottom:6px">🔗 Google Sheets linki</div>
+      <input class="inp" id="importUrlInp" value="${esc(S.importUrl)}" oninput="BUF.importUrl=this.value" placeholder="https://docs.google.com/spreadsheets/..." style="-webkit-appearance:none;font-size:12px"/>
+      <div style="font-size:10px;color:#3a3a5a;margin-top:5px">Sheets → File → Share → Publish to web → CSV → link</div>
+    </div>
+
+    <div style="margin-bottom:6px">
+      <div style="font-size:11px;color:#555;margin-bottom:6px">📅 Sessiya sanasi (ixtiyoriy)</div>
+      <input type="date" id="importDateInp" class="inp" style="-webkit-appearance:none;color:#888;font-size:13px"/>
+    </div>
+
+    ${S.csvLoading?`<div style="color:#a78bfa;font-size:12px;text-align:center;padding:10px">⏳ Yuklanmoqda...</div>`:""}
+    ${S.csvErr?`<div style="color:#f87171;font-size:11px;padding:8px 10px;background:#f8717115;border-radius:8px;margin-bottom:10px">${esc(S.csvErr)}</div>`:""}
+
+    <button onclick="loadFromLink()" style="width:100%;background:linear-gradient(135deg,#1e3a5f,#1a4a8a);color:#60a5fa;border:1px solid #60a5fa44;border-radius:12px;padding:12px;font-weight:700;font-size:13px;margin-bottom:10px">
+      🔗 Linkdan yuklash
+    </button>
+    <button onclick="document.getElementById('csvFileInp').click();back();" style="width:100%;background:linear-gradient(135deg,#052e16,#064e24);color:#34d399;border:1px solid #34d39944;border-radius:12px;padding:12px;font-weight:700;font-size:13px;margin-bottom:10px">
+      📂 CSV fayl tanlash
+    </button>
+    <button onclick="back()" style="width:100%;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:12px;padding:11px;font-size:13px">
+      Bekor
+    </button>
+  </div></div>`;
+}
+
+// ─── Add Student ──────────────────────────────────────────────────────────────
+function renderAddSheet(){
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet anim-up" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 20px"></div>
+    <div style="font-size:18px;font-weight:900;color:#e2e8f0;margin-bottom:16px">O'quvchi qo'shish</div>
+    <div style="margin-bottom:16px"><div style="font-size:11px;color:#555;margin-bottom:6px">Familiya va ism</div>
+    <input class="inp" id="nameInp" placeholder="Abdullayev Islom" oninput="BUF.name=this.value" style="-webkit-appearance:none"/></div>
+    <div style="font-size:11px;color:#555;margin-bottom:10px">Natijalar <span style="color:#3a3a5a">(ixtiyoriy)</span></div>
+    <div id="entryList">${entryRows()}</div>
+    <div onclick="addEntry()" style="border:1.5px dashed #2a2a45;border-radius:12px;padding:11px;text-align:center;color:#3a3a5a;font-size:12px;cursor:pointer;margin-bottom:14px">+ Yana natija</div>
+    <div id="addErr" style="color:#f87171;font-size:11px;margin-bottom:12px;padding:8px 12px;background:#f8717118;border-radius:8px;display:none"></div>
+    <button class="btn-grad" onclick="saveStudent()">Saqlash</button>
+  </div></div>`;
+}
+
+function renderScoreSheet(){
+  const s=S.active;
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet anim-up" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 20px"></div>
+    <div style="font-size:16px;font-weight:900;color:#e2e8f0;margin-bottom:4px">${esc(s.name)}</div>
+    <div style="font-size:11px;color:#555;margin-bottom:16px">Yangi natija qo'shish</div>
+    <div id="entryList">${entryRows()}</div>
+    <div onclick="addEntry()" style="border:1.5px dashed #2a2a45;border-radius:12px;padding:11px;text-align:center;color:#3a3a5a;font-size:12px;cursor:pointer;margin-bottom:14px">+ Yana natija</div>
+    <div id="addErr" style="color:#f87171;font-size:11px;margin-bottom:10px;padding:8px 12px;background:#f8717118;border-radius:8px;display:none"></div>
+    <button class="btn-grad" onclick="saveScore()">Saqlash</button>
+  </div></div>`;
+}
+
+function renderEditName(){
+  const s=S.active;
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #a78bfa44;border-radius:18px;padding:24px 20px;width:100%;max-width:320px" class="anim-zoom" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:#e2e8f0">Ismni tahrirlash</div>
+    <input class="inp" id="editNameInp" value="${esc(s.name)}" oninput="BUF.name=this.value" style="-webkit-appearance:none"/>
+    <button onclick="doEditName()" style="margin-top:12px;width:100%;background:#a78bfa;color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px">Saqlash</button>
+  </div></div>`;
+}
+
+function renderDelConfirm(){
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #f8717144;border-radius:18px;padding:24px 20px;width:100%;max-width:300px;text-align:center" class="anim-zoom" onclick="event.stopPropagation()">
+    <div style="font-size:36px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:6px">O'chirishni tasdiqlang</div>
+    <div style="font-size:12px;color:#f87171;margin-bottom:20px">"${esc(S.active.name)}"</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="back()" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;color:#888;border-radius:10px;padding:10px;font-weight:700;font-size:13px">Bekor</button>
+      <button onclick="doDelete()" style="flex:1;background:#dc2626;border:none;color:#fff;border-radius:10px;padding:10px;font-weight:700;font-size:13px">O'chir</button>
+    </div>
+  </div></div>`;
+}
+
+function renderTeacher(){
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #a78bfa44;border-radius:18px;padding:24px 20px;width:100%;max-width:300px" class="anim-zoom" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:#e2e8f0">Ustoz ismi</div>
+    <input class="inp" id="teacherInp" value="${esc(S.teacher)}" oninput="BUF.teacher=this.value" style="-webkit-appearance:none"/>
+    <button onclick="doSaveTeacher()" style="margin-top:12px;width:100%;background:#a78bfa;color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px">Saqlash</button>
+  </div></div>`;
+}
+
+// ─── CSV Loading ──────────────────────────────────────────────────────────────
+function handleCSVText(text){
+  const date=document.getElementById("importDateInp")?.value||"";
+  const rows=parseCSV(text);
+  if(!rows.length){setState({csvErr:"Ma'lumot topilmadi. Fayl formatini tekshiring.",csvLoading:false});return;}
+  const merged=mergeCSVIntoStudents(rows,S.students,date);
+  sv("st_students",merged);
+  setState({students:merged,page:"list",csvLoading:false,csvErr:""});
+  setTimeout(()=>alert(`✅ ${rows.length} ta o'quvchi qo'shildi/yangilandi!`),100);
+}
+
+async function loadFromLink(){
+  const url=(BUF.importUrl||document.getElementById("importUrlInp")?.value||"").trim();
+  if(!url){setState({csvErr:"Link kiriting"});return;}
+  sv("st_importUrl",url);
+  setState({csvLoading:true,csvErr:"",importUrl:url});
+  try{
+    const idMatch=url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const gidMatch=url.match(/[?&]gid=(\d+)/);
+    let csvUrl=url;
+    if(idMatch){
+      const gid=gidMatch?gidMatch[1]:"0";
+      csvUrl=`https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+    }
+    const res=await fetch(csvUrl);
+    if(!res.ok)throw new Error("Server: "+res.status);
+    handleCSVText(await res.text());
+  }catch(e){
+    setState({csvErr:"Xatolik: "+e.message+". Sheets 'Anyone with link can view' bo'lishi kerak.",csvLoading:false});
+  }
+}
+
+// File input handler
+document.getElementById("csvFileInp").addEventListener("change",function(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>handleCSVText(ev.target.result);
+  reader.readAsText(file,"UTF-8");
+  e.target.value="";
+});
+
+// ─── Live updates ─────────────────────────────────────────────────────────────
+function liveScore(id,val){
+  const en=BUF.entries.find(e=>e.id===id);if(!en)return;en.score=val;
+  const p=parseF(val),el=document.getElementById(`prev_${id}`);
+  if(el)el.textContent=(p!==null&&val.trim())?`→ ${p}% (${grade(p).l})`:"";
+}
+function liveDate(id,val){const en=BUF.entries.find(e=>e.id===id);if(en)en.date=val;}
+function liveEditScore(val){
+  BUF.editScore=val;
+  const p=parseF(val),el=document.getElementById("editPrev");
+  if(el)el.textContent=(p!==null&&val.trim())?`→ ${p}% (${grade(p).l})`:"";
+}
+
+function refreshEntryList(){const el=document.getElementById("entryList");if(el)el.innerHTML=entryRows();}
+function addEntry(){BUF.entries.push({id:uid(),si:0,score:"",date:""});refreshEntryList();}
+function rmEntry(id){if(BUF.entries.length<2)return;BUF.entries=BUF.entries.filter(e=>e.id!==id);refreshEntryList();}
+function pickSi(id,si){const en=BUF.entries.find(e=>e.id===id);if(en){en.si=Number(si);refreshEntryList();}}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+function back(){resetBuf();setState({page:"list",active:null,editIdx:null,csvLoading:false,csvErr:""});}
+function go(page){resetBuf();setState({page});}
+function toggleLang(){const l=S.lang==="uz"?"ru":"uz";sv("st_lang",l);setState({lang:l});}
+function doSearch(v){S.search=v;render();}
+function openDetail(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();setState({page:"detail",active:{...s},editIdx:null});}}
+function openAddScore(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();setState({page:"addScore",active:s});}}
+function editName(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();BUF.name=s.name;setState({page:"editName",active:s});}}
+function delConfirm(id){const s=S.students.find(x=>x.id===id);if(s)setState({page:"delConfirm",active:s});}
+
+// ─── Save ─────────────────────────────────────────────────────────────────────
+function saveStudent(){
+  const name=(BUF.name||document.getElementById("nameInp")?.value||"").trim();
+  if(!name){showErr("addErr","Ism kiriting");return;}
+  const scores=[[],[],[]],days=[[],[],[]];
+  for(const en of BUF.entries){
+    if(!en.score.trim())continue;
+    const p=parseF(en.score);
+    if(p===null){showErr("addErr",`"${en.score}" noto'g'ri`);return;}
+    scores[en.si].push(p);days[en.si].push(en.date||"");
+  }
+  const ns=[...S.students,{id:uid(),name,scores,days}];
+  sv("st_students",ns);resetBuf();setState({students:ns,page:"list"});
+}
+
+function saveScore(){
+  const s=S.active;if(!s)return;
+  const ns=[[],[],[]],nd=[[],[],[]];
+  for(const en of BUF.entries){
+    if(!en.score.trim())continue;
+    const p=parseF(en.score);
+    if(p===null){showErr("addErr",`"${en.score}" noto'g'ri`);return;}
+    ns[en.si].push(p);nd[en.si].push(en.date||"");
+  }
+  const days=s.days||[[],[],[]];
+  const upd={...s,scores:s.scores.map((a,i)=>[...a,...ns[i]]),days:days.map((a,i)=>[...a,...nd[i]])};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);resetBuf();setState({students:all,page:"list",active:null});
+}
+
+function doEditName(){
+  const name=(BUF.name||document.getElementById("editNameInp")?.value||"").trim();
+  if(!name)return;
+  const all=S.students.map(x=>x.id===S.active.id?{...x,name}:x);
+  sv("st_students",all);resetBuf();setState({students:all,page:"list",active:null});
+}
+
+function doDelete(){
+  const all=S.students.filter(x=>x.id!==S.active.id);
+  sv("st_students",all);setState({students:all,page:"list",active:null});
+}
+
+function doSaveTeacher(){
+  const name=(BUF.teacher||document.getElementById("teacherInp")?.value||"").trim()||"Ustoz";
+  sv("st_teacher",name);resetBuf();setState({teacher:name,page:"list"});
+}
+
+function startEdit(si,idx,v,d){BUF.editScore=String(v);BUF.editDate=d;setState({editIdx:{si:Number(si),idx:Number(idx)}});}
+function cancelEdit(){BUF.editScore="";BUF.editDate="";setState({editIdx:null});}
+
+function saveEntryEdit(si,idx){
+  const val=BUF.editScore||document.getElementById("editScoreInp")?.value||"";
+  const date=BUF.editDate||document.getElementById("editDateInp")?.value||"";
+  const p=parseF(val);
+  if(p===null){const el=document.getElementById("editErr");if(el){el.style.display="block";el.textContent="Noto'g'ri format";}return;}
+  const s=S.active;
+  const newScores=s.scores.map((arr,i)=>i==si?arr.map((v,j)=>j==idx?p:v):arr);
+  const newDays=(s.days||[[],[],[]]).map((arr,i)=>i==si?arr.map((v,j)=>j==idx?date:v):arr);
+  const upd={...s,scores:newScores,days:newDays};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);BUF.editScore="";BUF.editDate="";
+  setState({students:all,active:upd,editIdx:null});
+}
+
+function delEntry(si,idx){
+  const s=S.active;
+  const newScores=s.scores.map((arr,i)=>i==si?arr.filter((_,j)=>j!=idx):arr);
+  const newDays=(s.days||[[],[],[]]).map((arr,i)=>i==si?arr.filter((_,j)=>j!=idx):arr);
+  const upd={...s,scores:newScores,days:newDays};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);setState({students:all,active:upd,editIdx:null});
+}
+
+function showErr(id,msg){const el=document.getElementById(id);if(el){el.style.display="block";el.textContent=msg;}}
+
+// ─── Select mode ──────────────────────────────────────────────────────────────
+function toggleSelectMode(){
+  setState({selectMode:!S.selectMode,selected:[]});
+}
+function toggleSelect(id){
+  const sel=S.selected.includes(id)?S.selected.filter(x=>x!==id):[...S.selected,id];
+  setState({selected:sel});
+}
+function selectAll(){
+  const filtered=S.students.filter(s=>s.name.toLowerCase().includes(S.search.toLowerCase()));
+  const allIds=filtered.map(s=>s.id);
+  // if all already selected — deselect all, else select all
+  const sel=S.selected.length===allIds.length?[]:allIds;
+  setState({selected:sel});
+}
+function bulkDelete(){
+  if(!S.selected.length)return;
+  const n=S.selected.length;
+  if(!confirm(`${n} ta o'quvchi o'chirilsinmi?`))return;
+  const all=S.students.filter(s=>!S.selected.includes(s.id));
+  sv("st_students",all);
+  setState({students:all,selected:[],selectMode:false});
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+resetBuf();render();
+</script>
+</body>
+</html>
