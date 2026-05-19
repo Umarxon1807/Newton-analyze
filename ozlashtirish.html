@@ -211,6 +211,7 @@ const S={
   importUrl : ld("st_importUrl")||"",
   selected: [],      // ids of selected students for bulk delete
   selectMode: false, // is selection mode active
+  filial: "Barchasi",
 };
 const setState=(p,noRender)=>{Object.assign(S,p);if(!noRender)render();};
 
@@ -318,14 +319,28 @@ function renderStats(){
   </div>`;
 }
 
-// ─── Search ───────────────────────────────────────────────────────────────────
+// ─── Search + Filial filter ───────────────────────────────────────────────────
 function renderSearch(){
-  return`<div style="padding:10px 14px 0"><div style="display:flex;align-items:center;gap:10px;background:#0f0f1a;border:1.5px solid #2a2a45;border-radius:999px;padding:10px 18px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input id="searchInp" value="${esc(S.search)}" oninput="doSearch(this.value)" placeholder="${S.lang==="uz"?"O'quvchi qidiring...":"Поиск ученика..."}" style="flex:1;background:transparent;border:none;outline:none;color:#e2e8f0;font-size:13px"/>${S.search?`<span onclick="doSearch('')" style="color:#444;cursor:pointer">✕</span>`:""}</div></div>`;
+  // Get unique filials from students
+  const filials=["Barchasi",...new Set(S.students.map(s=>s.filial).filter(Boolean))].sort((a,b)=>a==="Barchasi"?-1:a.localeCompare(b));
+  return`
+  <div style="padding:10px 14px 0">
+    <div style="display:flex;align-items:center;gap:10px;background:#0f0f1a;border:1.5px solid #2a2a45;border-radius:999px;padding:10px 18px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input id="searchInp" value="${esc(S.search)}" oninput="doSearch(this.value)" placeholder="${S.lang==="uz"?"O'quvchi qidiring...":"Поиск ученика..."}" style="flex:1;background:transparent;border:none;outline:none;color:#e2e8f0;font-size:13px"/>
+      ${S.search?`<span onclick="doSearch('')" style="color:#444;cursor:pointer">✕</span>`:""}
+    </div>
+  </div>
+  ${filials.length>1?`
+  <div style="display:flex;gap:6px;overflow-x:auto;padding:8px 14px 0;scrollbar-width:none">
+    ${filials.map(f=>`<div onclick="setFilial('${esc(f)}')" style="flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;border:1.5px solid ${S.filial===f?"#a78bfa":"#2a2a45"};color:${S.filial===f?"#a78bfa":"#555"};background:${S.filial===f?"#a78bfa18":"transparent"};white-space:nowrap">${esc(f)}</div>`).join("")}
+  </div>`:""}`;
 }
 
 // ─── Student List ─────────────────────────────────────────────────────────────
 function renderList(){
-  const filtered=S.students.filter(s=>s.name.toLowerCase().includes(S.search.toLowerCase()));
+  let filtered=S.students.filter(s=>s.name.toLowerCase().includes(S.search.toLowerCase()));
+  if(S.filial&&S.filial!=="Barchasi") filtered=filtered.filter(s=>s.filial===S.filial);
   if(!filtered.length)return`<div style="text-align:center;color:#2a2a45;padding:56px 0;font-size:13px">${S.students.length===0?"Hali o'quvchi yo'q.\n＋ tugmasi yoki 📂 CSV yuklang":"Hech kim topilmadi"}</div>`;
   return filtered.map(s=>{
     const ov=ovAvg(s),g=grade(ov);
@@ -653,6 +668,9 @@ function showErr(id,msg){const el=document.getElementById(id);if(el){el.style.di
 // ─── Select mode ──────────────────────────────────────────────────────────────
 function toggleSelectMode(){
   setState({selectMode:!S.selectMode,selected:[]});
+}
+function setFilial(f){
+  setState({filial:f});
 }
 function toggleSelect(id){
   const sel=S.selected.includes(id)?S.selected.filter(x=>x!==id):[...S.selected,id];
