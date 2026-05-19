@@ -54,28 +54,35 @@ const ld  = k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;
 const sv  = (k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 const fmt = d=>d?d.slice(5):"";
 
-// ─── Name normalization (Cyrillic ↔ Latin ↔ mixed) ───────────────────────────
-// Convert Cyrillic letters to Latin equivalents for comparison
-const CYR_TO_LAT={
-  'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g',
-  'Д':'D','д':'d','Е':'E','е':'e','Ё':'E','ё':'e','Ж':'Zh','ж':'zh',
-  'З':'Z','з':'z','И':'I','и':'i','Й':'Y','й':'y','К':'K','к':'k',
-  'Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n','О':'O','о':'o',
-  'П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
-  'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts',
-  'Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh','Щ':'Sh','щ':'sh','Ъ':'','ъ':'',
-  'Ы':'I','ы':'i','Ь':'','ь':'','Э':'E','э':'e','Ю':'Yu','ю':'yu',
-  'Я':'Ya','я':'ya','Ў':'O\'','ў':'o\'','Қ':'Q','қ':'q','Ғ':'G\'','ғ':'g\'',
-  'Ҳ':'H','ҳ':'h','Ъ':'\'','ъ':'\'',
+// ─── Name normalization ───────────────────────────────────────────────────────
+const CYR_MAP={
+  'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g','Д':'D','д':'d',
+  'Е':'E','е':'e','Ё':'E','ё':'e','Ж':'Zh','ж':'zh','З':'Z','з':'z','И':'I','и':'i',
+  'Й':'Y','й':'y','К':'K','к':'k','Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n',
+  'О':'O','о':'o','П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
+  'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ц':'Ts','ц':'ts','Ч':'Ch','ч':'ch',
+  'Ш':'Sh','ш':'sh','Щ':'Sh','щ':'sh','Ъ':'','ъ':'','Ы':'I','ы':'i','Ь':'','ь':'',
+  'Э':'E','э':'e','Ю':'Yu','ю':'yu','Я':'Ya','я':'ya',
+  'Ў':'O','ў':'o','Қ':'Q','қ':'q','Ғ':'G','ғ':'g','Ҳ':'H','ҳ':'h',
+  // Uzbek specific
+  'Ъ':"'",'ъ':"'",'ʼ':'','ʻ':'','ʽ':'','\u02bc':'','\u2018':'','\u2019':'',
 };
 function normName(name){
   if(!name)return"";
-  let s=name.trim();
-  // transliterate Cyrillic to Latin
+  // 1. Trim all whitespace including inside
+  let s=name.trim().replace(/\s+/g," ");
+  // 2. Transliterate Cyrillic → Latin
   let res="";
-  for(const ch of s){res+=CYR_TO_LAT[ch]!==undefined?CYR_TO_LAT[ch]:ch;}
-  // normalize: lowercase, collapse spaces, remove apostrophes/quotes for comparison
-  return res.toLowerCase().replace(/['`ʼ'']/g,"").replace(/\s+/g," ").trim();
+  for(const ch of s) res+=CYR_MAP[ch]!==undefined?CYR_MAP[ch]:ch;
+  // 3. Lowercase
+  res=res.toLowerCase();
+  // 4. Remove all apostrophes, quotes, special chars
+  res=res.replace(/['\u2018\u2019\u02bc\u02bb`ʼʻʽ"]/g,"");
+  // 5. Remove all spaces (so "Abdullayev Islom" == "AbdullayevIslom")
+  res=res.replace(/\s+/g,"");
+  // 6. Remove common noise chars
+  res=res.replace(/[-_.]/g,"");
+  return res;
 }
 
 // ─── CSV Parser ───────────────────────────────────────────────────────────────
