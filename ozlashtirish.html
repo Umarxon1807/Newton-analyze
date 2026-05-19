@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="O'zlashtirish"/>
+<meta name="theme-color" content="#07070f"/>
+<title>O'zlashtirish Tahlili</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{min-height:100%;background:#07070f;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden}
+input,button{font-family:inherit}button{cursor:pointer}
+::-webkit-scrollbar{width:0;height:0}
+.pill{width:44px;height:44px;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.inp{width:100%;background:#07070f;border:1.5px solid #2a2a45;color:#e2e8f0;border-radius:10px;padding:11px 14px;font-size:14px;outline:none;-webkit-appearance:none}
+.inp:focus{border-color:#a78bfa}
+.sheet-bg{position:fixed;inset:0;background:#07070fcc;backdrop-filter:blur(8px);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#0b0b18;border:1.5px solid #2a2a45;border-radius:22px 22px 0 0;padding:22px 18px 48px;width:100%;max-width:480px;max-height:92vh;overflow-y:auto}
+.overlay{position:fixed;inset:0;background:#07070fdd;backdrop-filter:blur(10px);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#0b0b18;border:1.5px solid #2a2a45;border-radius:22px;padding:20px 16px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+.iBtn{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;flex-shrink:0;border:1px solid transparent}
+.btnG{width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:12px;padding:13px;font-weight:700;font-size:14px}
+/* Accordion */
+.acc-content{overflow:hidden;max-height:0;transition:max-height 0.35s ease;background:#07070f;border-radius:0 0 12px 12px}
+.acc-content.open{max-height:9999px}
+@keyframes zoomIn{from{transform:scale(.75) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.az{animation:zoomIn .25s cubic-bezier(.34,1.56,.64,1)}
+.au{animation:slideUp .28s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<input type="file" id="fileInp" accept=".csv,.html,.htm" style="display:none"/>
+<script>
+// ══════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════
+const SUBJ=["Matematika","Ingliz tili","Muammoni hal qilish"];
+const SCOL=["#34d399","#60a5fa","#f472b6"];
+const STAB=["Matematik","Ingliz","Tanqidiy"];
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+const uid  =()=>Math.random().toString(36).slice(2,9);
+const avg  =a=>a&&a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):0;
+const ovAvg=s=>Math.min(100,Math.round(SUBJ.reduce((sum,_,i)=>sum+avg(s.scores[i]),0)/3));
+const grade=v=>v>=85?{l:"A'lo",c:"#34d399"}:v>=70?{l:"Yaxshi",c:"#60a5fa"}:v>=55?{l:"Qoniqarli",c:"#fbbf24"}:{l:"Qoniqarsiz",c:"#f87171"};
+const parseF=s=>{const t=s.trim();if(t.includes("/")){const[a,b]=t.split("/").map(Number);if(!isNaN(a)&&!isNaN(b)&&b>0)return Math.min(100,Math.round(a/b*100));}const n=Number(t);return(!isNaN(n)&&n>=0&&n<=100)?Math.round(n):null;};
+const esc  =s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const ld   =k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}};
+const sv   =(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+const fmt  =d=>d?d.slice(5):"";
+
+// ══════════════════════════════════════════════════════
+// SMART NAME MATCHING
+// ══════════════════════════════════════════════════════
+const CYR={'А':'A','а':'a','Б':'B','б':'b','В':'V','в':'v','Г':'G','г':'g','Д':'D','д':'d',
+'Е':'E','е':'e','Ё':'E','ё':'e','Ж':'Zh','ж':'zh','З':'Z','з':'z','И':'I','и':'i',
+'Й':'Y','й':'y','К':'K','к':'k','Л':'L','л':'l','М':'M','м':'m','Н':'N','н':'n',
+'О':'O','о':'o','П':'P','п':'p','Р':'R','р':'r','С':'S','с':'s','Т':'T','т':'t',
+'У':'U','у':'u','Ф':'F','ф':'f','Х':'X','х':'x','Ч':'Ch','ч':'ch','Ш':'Sh','ш':'sh',
+'Щ':'Sh','Ъ':'','ъ':'','Ы':'I','ы':'i','Ь':'','ь':'','Э':'E','э':'e',
+'Ю':'Yu','ю':'yu','Я':'Ya','я':'ya','Ў':'O','ў':'o','Қ':'Q','қ':'q','Ғ':'G','ғ':'g','Ҳ':'H','ҳ':'h'};
+const DIG={'0':'o','1':'i','2':'z','3':'e','4':'a','5':'s','6':'b','7':'t','8':'b','9':'g'};
+
+function nw(w){
+  let r=''.concat(...w.trim().toUpperCase()).split('').map(c=>CYR[c]!==undefined?CYR[c]:c).join('').toLowerCase();
+  r=[...r].map(c=>DIG[c]||c).join('');
+  r=r.replace(/['\u2018\u2019\u02bc\u02bb`ʼʻʽ"$@#!]/g,'');
+  r=r.replace(/x/g,'h').replace(/o['`\u02bc]/g,'o').replace(/g['`\u02bc]/g,'g');
+  r=r.replace(/(.)\1+/g,'$1');
+  return r;
+}
+const nn=name=>nw((name||'').replace(/\s+/g,''));
+
+function lev(a,b){
+  if(a===b)return 0;if(a.length<b.length)[a,b]=[b,a];
+  let p=Array.from({length:b.length+1},(_,i)=>i);
+  for(let i=0;i<a.length;i++){const c=[i+1];for(let j=0;j<b.length;j++)c.push(Math.min(p[j]+(a[i]!==b[j]?1:0),c[j]+1,p[j+1]+1));p=c;}
+  return p[b.length];
+}
+
+// Word similarity — strict for short words
+function wSim(a,b){
+  const d=lev(a,b),m=Math.max(a.length,b.length,1);
+  const t=m>=6?1:0;
+  return d>t?0:1-d/m;
+}
+
+// Split full name into [surname, firstname] parts
+function splitName(name){
+  const parts=(name||'').trim().split(/\s+/).map(nw).filter(Boolean);
+  return parts;
+}
+
+// Check if two names refer to same person
+// Rules:
+// 1. Surnames must match well
+// 2. First names: one can be prefix of other (Doniyor ⊂ Doniyorbek = same)
+//    BUT only if filial+guruh also match
+// 3. If filial differs → different person
+// 4. If guruh differs (both non-empty) → different person
+// 5. Swapped order supported: "Doniyorbek Akramjonov" == "Akramjonov Doniyorbek"
+function samePerson(s1, s2){
+  // Quick exact check
+  if(nn(s1.name)===nn(s2.name) && s1.filial===s2.filial) return true;
+
+  const w1=splitName(s1.name);
+  const w2=splitName(s2.name);
+  if(!w1.length||!w2.length) return false;
+
+  // Filial must match (both non-empty) — check early
+  const f1=nn(s1.filial||''), f2=nn(s2.filial||'');
+  if(f1&&f2&&f1!==f2) return false;
+
+  // Guruh must match if both present — check early
+  const g1=nn(s1.guruh||''), g2=nn(s2.guruh||'');
+  if(g1&&g2&&g1!==g2) return false;
+
+  const isPrefix=(a,b)=>a.length>0&&b.length>0&&(b.startsWith(a)||a.startsWith(b));
+  const namePartsMatch=(surA,fnA,surB,fnB)=>{
+    if(wSim(surA,surB)<0.85) return false;
+    if(!fnA||!fnB) return false;
+    return isPrefix(fnA,fnB)||wSim(fnA,fnB)>=0.8;
+  };
+
+  // Try normal order: w1[0]=surname, w1[1+]=firstname
+  const sur1=w1[0], fn1=w1.slice(1).join('');
+  const sur2=w2[0], fn2=w2.slice(1).join('');
+  if(namePartsMatch(sur1,fn1,sur2,fn2)) return true;
+
+  // Try swapped order: w1[last]=surname, w1[0..last-1]=firstname
+  // e.g. "Doniyorbek Akramjonov" → surname=Akramjonov, first=Doniyorbek
+  if(w1.length>=2&&w2.length>=2){
+    const sur1s=w1[w1.length-1], fn1s=w1.slice(0,-1).join('');
+    const sur2s=w2[w2.length-1], fn2s=w2.slice(0,-1).join('');
+    // swapped1 vs normal2
+    if(namePartsMatch(sur1s,fn1s,sur2,fn2)) return true;
+    // normal1 vs swapped2
+    if(namePartsMatch(sur1,fn1,sur2s,fn2s)) return true;
+    // swapped1 vs swapped2
+    if(namePartsMatch(sur1s,fn1s,sur2s,fn2s)) return true;
+  }
+
+  return false;
+}
+
+// ══════════════════════════════════════════════════════
+// CSV / HTML PARSERS
+// ══════════════════════════════════════════════════════
+function splitCSV(line){
+  const r=[];let cur="",inQ=false;
+  for(const c of line){if(c==='"'){inQ=!inQ;continue;}if(c===','&&!inQ){r.push(cur);cur="";continue;}cur+=c;}
+  r.push(cur);return r;
+}
+
+function detectCols(lines){
+  const cols={nameCol:1,filialCol:2,guruhCol:3,sub1F:5,sub2F:7,jamiF:8,sub2:"muammo",date:"",merged:false};
+  if(!lines.length)return cols;
+  const r0=splitCSV(lines[0]).map(c=>c.toLowerCase().trim());
+  if(r0[0]==="ism"||r0[0]==="name"){
+    cols.merged=true;
+    cols.nameCol  =r0.findIndex(c=>c==="ism"||c==="name");
+    cols.filialCol=r0.findIndex(c=>c.includes("filial"));
+    cols.guruhCol =r0.findIndex(c=>c.includes("guruh")||c.includes("sinf"));
+    cols.dateCol  =r0.findIndex(c=>c.includes("sana")||c.includes("date"));
+    cols.sub1F    =r0.findIndex(c=>c.includes("matematik"));
+    cols.inglizC  =r0.findIndex(c=>c.includes("ingliz"));
+    cols.muammoC  =r0.findIndex(c=>c.includes("muam"));
+    cols.jamiF    =r0.findIndex(c=>c.includes("jami"));
+    return cols;
+  }
+  const dm=lines[0].match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(dm)cols.date=`${dm[3]}-${dm[2]}-${dm[1]}`;
+  if(lines.length>1){const r1=lines[1].toLowerCase();cols.sub2=(r1.includes("ingliz")||r1.includes("англий"))?"ingliz":"muammo";}
+  return cols;
+}
+
+function parseCSV(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const res=[];if(lines.length<2)return res;
+  const C=detectCols(lines);
+  const gf=(c,idx)=>{if(idx<0||idx>=c.length)return 0;return Math.min(100,Math.max(0,parseFloat((c[idx]||"0").replace(",","."))||0));};
+  if(C.merged){
+    for(let i=1;i<lines.length;i++){
+      const c=splitCSV(lines[i]);const name=(c[C.nameCol]||"").trim();if(!name)continue;
+      const filial=(c[C.filialCol]||"").trim();
+      if(!filial)continue; // skip if no filial
+      res.push({name,filial,guruh:(c[C.guruhCol]||"").trim(),
+        mathF:gf(c,C.sub1F),inglizF:gf(c,C.inglizC),muammoF:gf(c,C.muammoC),jamiF:gf(c,C.jamiF),
+        date:C.dateCol>=0?(c[C.dateCol]||"").trim():C.date});
+    }
+    return res;
+  }
+  for(let i=3;i<lines.length;i++){
+    const c=splitCSV(lines[i]);const name=(c[C.nameCol]||"").trim();if(!name)continue;
+    const filial=(c[C.filialCol]||"").trim();
+    if(!filial)continue; // skip if no filial
+    const mF=gf(c,C.sub1F),s2F=gf(c,C.sub2F),jF=gf(c,C.jamiF);
+    if(mF===0&&s2F===0&&jF===0)continue;
+    res.push({name,filial,guruh:(c[C.guruhCol]||"").trim(),
+      mathF:mF,inglizF:C.sub2==="ingliz"?s2F:0,muammoF:C.sub2==="muammo"?s2F:0,jamiF:jF,date:C.date});
+  }
+  return res;
+}
+
+function parseHTML(html){
+  const rows=[];
+  const trRe=/<tr[^>]*>([\s\S]*?)<\/tr>/gi;const tagRe=/<[^>]+>/g;
+  let tm;
+  while((tm=trRe.exec(html))!==null){
+    const cells=[];let td;const r2=/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    while((td=r2.exec(tm[1]))!==null){
+      cells.push(td[1].replace(tagRe,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&')
+        .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").trim());
+    }
+    if(cells.length)rows.push(cells);
+  }
+  if(rows.length<4)return[];
+  let date="";const dm=[...rows.slice(0,3)].join(" ").match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(dm)date=`${dm[3]}-${dm[2]}-${dm[1]}`;
+  const sub2=[...rows.slice(0,4)].join(" ").toLowerCase().includes("ingliz")?"ingliz":"muammo";
+  const res=[];
+  for(let i=4;i<rows.length;i++){
+    const r=rows[i];const name=(r[2]||"").trim();
+    if(!name||/^\d+$/.test(name)||name.toLowerCase().includes("smena")||name.length<3)continue;
+    const filial=(r[3]||"").trim();
+    if(!filial)continue; // skip no filial
+    const gf=idx=>idx<r.length?Math.min(100,Math.max(0,parseFloat((r[idx]||"0").replace(",","."))||0)):0;
+    const mF=gf(6),s2F=gf(8),jF=gf(9);
+    if(mF===0&&s2F===0)continue;
+    res.push({name,filial,guruh:(r[4]||"").trim(),
+      mathF:mF,inglizF:sub2==="ingliz"?s2F:0,muammoF:sub2==="muammo"?s2F:0,jamiF:jF,date});
+  }
+  return res;
+}
+
+// ══════════════════════════════════════════════════════
+// MERGE (smart matching with filial+guruh rules)
+// ══════════════════════════════════════════════════════
+function merge(rows,students,sessionDate){
+  const res=students.map(s=>({...s,scores:s.scores.map(a=>[...a]),days:(s.days||[[],[],[]]).map(a=>[...a])}));
+  let added=0,updated=0;
+  const skipped=[];  // {name, filial, reason}
+  const merged_dupes=[];
+
+  for(const row of rows){
+    const d=sessionDate||row.date||"";
+
+    // Find matching existing student
+    const idx=res.findIndex(s=>samePerson(
+      {name:s.name,filial:s.filial||"",guruh:s.guruh||""},
+      {name:row.name,filial:row.filial,guruh:row.guruh}
+    ));
+
+    if(idx>=0){
+      const s=res[idx];const dy=s.days||[[],[],[]];
+      if(row.mathF>0){s.scores[0].push(row.mathF);dy[0].push(d);}
+      if(row.inglizF>0){s.scores[1].push(row.inglizF);dy[1].push(d);}
+      if(row.muammoF>0){s.scores[2].push(row.muammoF);dy[2].push(d);}
+      s.days=dy;res[idx]=s;updated++;
+      // Track if name was different (merged)
+      if(nn(s.name)!==nn(row.name))merged_dupes.push([row.name,s.name]);
+    } else {
+      // New student — guruh required
+      if(!row.guruh){
+        skipped.push({name:row.name,filial:row.filial,reason:"sinf yo'q"});
+        continue;
+      }
+      const sc=[[],[],[]],dy=[[],[],[]];
+      if(row.mathF>0){sc[0].push(row.mathF);dy[0].push(d);}
+      if(row.inglizF>0){sc[1].push(row.inglizF);dy[1].push(d);}
+      if(row.muammoF>0){sc[2].push(row.muammoF);dy[2].push(d);}
+      res.push({id:uid(),name:row.name,filial:row.filial,guruh:row.guruh,scores:sc,days:dy});
+      added++;
+    }
+  }
+  return{students:res,added,updated,skipped,merged_dupes};
+}
+
+// ══════════════════════════════════════════════════════
+// SVG CHART
+// ══════════════════════════════════════════════════════
+function mkSVG(scores,days){
+  if(!scores||!scores.length)return`<div style="color:#2a2a45;text-align:center;padding:18px 0;font-size:11px">Ma'lumot yo'q</div>`;
+  const W=300,H=110,PL=34,PB=22,PT=16,PR=8,cW=W-PL-PR,cH=H-PB-PT;
+  const pts=scores.map((v,i)=>({x:PL+(i/Math.max(scores.length-1,1))*cW,y:PT+cH-(v/100)*cH,v}));
+  const poly=pts.map(p=>`${p.x},${p.y}`).join(" ");
+  const area=`${pts[0].x},${PT+cH} ${poly} ${pts[pts.length-1].x},${PT+cH}`;
+  const grow=scores.length>1&&scores[scores.length-1]>=scores[0];
+  const diff=scores.length>1?Math.round((scores[scores.length-1]-scores[0])/Math.max(scores[0],1)*100):0;
+  const lc=grow?"#34d399":"#f87171",fc=grow?"#34d39918":"#f8717118";
+  const grids=[0,25,50,75,100].map(s=>{const y=PT+cH-(s/100)*cH;return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#1e1e33" stroke-width="1"/><text x="${PL-4}" y="${y+4}" fill="#3a3a5a" font-size="8" text-anchor="end">${s}</text>`;}).join("");
+  const dots=pts.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lc}"/><text x="${p.x}" y="${p.y-6}" fill="${lc}" font-size="7" text-anchor="middle">${p.v}%</text><text x="${p.x}" y="${H-3}" fill="#3a3a5a" font-size="7" text-anchor="middle">${days&&days[i]?days[i]:i+1}</text>`).join("");
+  return`<div style="display:flex;justify-content:flex-end;margin-bottom:3px"><span style="font-size:9px;font-weight:700;color:${lc};background:${lc}22;padding:2px 8px;border-radius:20px">${diff>0?"▲":diff<0?"▼":"—"} ${Math.abs(diff)}%</span></div><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${grids}<polygon points="${area}" fill="${fc}"/><polyline points="${poly}" fill="none" stroke="${lc}" stroke-width="2" stroke-linejoin="round"/>${dots}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#2a2a45" stroke-width="1"/></svg>`;
+}
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const S={
+  teacher:ld("st_teacher")||"Ustoz",lang:ld("st_lang")||"uz",
+  students:ld("st_students")||[],
+  search:"",openFilial:null, // accordion: which filial is open
+  sortBy:"jami",sortAsc:false,
+  page:"list",active:null,editIdx:null,
+  csvLoading:false,csvErr:"",importUrl:ld("st_importUrl")||"",
+  selected:[],selectMode:false,
+  importReport:null,
+  tab:"list",
+};
+const set=(p,nr)=>{Object.assign(S,p);if(!nr)render();};
+
+let BUF={entries:[],name:"",teacher:"",editScore:"",editDate:"",importUrl:""};
+function resetBuf(){BUF={entries:[{id:uid(),si:0,score:"",date:""}],name:"",teacher:S.teacher,editScore:"",editDate:"",importUrl:S.importUrl};}
+
+// ══════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════
+function render(){
+  let overlay="";
+  if(S.page==="addStudent") overlay=renderAddSheet();
+  else if(S.page==="addScore")     overlay=renderScoreSheet();
+  else if(S.page==="detail")       overlay=renderDetail();
+  else if(S.page==="editName")     overlay=renderEditName();
+  else if(S.page==="delConfirm")   overlay=renderDelConfirm();
+  else if(S.page==="editTeacher")  overlay=renderTeacher();
+  else if(S.page==="import")       overlay=renderImport();
+  else if(S.page==="importReport") overlay=renderImportReport();
+  document.getElementById("root").innerHTML=
+    renderHeader()+renderStatsBar()+renderSearch()+
+    (S.tab==="stats"?renderFilialStats():`<div style="padding:10px 12px 40px">${renderAccordion()}</div>`)+
+    overlay;
+}
+
+// ── Header ────────────────────────────────────────────
+function renderHeader(){
+  const ini=S.teacher.trim()?S.teacher.trim()[0].toUpperCase():"U";
+  return`<div style="background:linear-gradient(135deg,#0d0d1f,#12122a);border-bottom:1px solid #1a1a30;padding:12px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100">
+    <div class="pill" onclick="go('editTeacher')" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);font-size:20px;font-weight:900;color:#fff;box-shadow:0 0 0 2px #a78bfa44">${ini}</div>
+    <div class="pill" onclick="go('addStudent')" style="background:#111127;border:2px dashed #a78bfa66;font-size:24px;color:#a78bfa">+</div>
+    <div class="pill" onclick="toggleLang()" style="background:#111127;border:1.5px solid #2a2a45;font-size:10px;font-weight:900;color:#a78bfa">${S.lang==="uz"?"UZ":"RU"}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:900;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${S.lang==="uz"?"O'zlashtirish Tahlili":"Анализ Успеваемости"}</div>
+      <div style="font-size:9px;color:#3a3a5a">${S.lang==="uz"?"Test natijalari asosida":"По результатам тестов"}</div>
+    </div>
+    <button onclick="document.getElementById('fileInp').click()" style="background:#052e16;border:1px solid #34d39944;color:#34d399;border-radius:8px;padding:6px 9px;font-size:13px;font-weight:700;flex-shrink:0" title="CSV/HTML">📂</button>
+    <button onclick="go('import')" style="background:#0d0d2e;border:1px solid #60a5fa44;color:#60a5fa;border-radius:8px;padding:6px 9px;font-size:13px;font-weight:700;flex-shrink:0" title="Link">🔗</button>
+    <button onclick="toggleSM()" style="background:${S.selectMode?"#4a1a1a":"#1a1a2e"};border:1px solid ${S.selectMode?"#f8717188":"#2a2a45"};color:${S.selectMode?"#f87171":"#888"};border-radius:8px;padding:6px 9px;font-size:13px;font-weight:700;flex-shrink:0">☑</button>
+  </div>
+  ${S.selectMode&&S.selected.length>0?`<div style="background:#1a0a0a;border-top:1px solid #f8717133;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:68px;z-index:99"><div style="font-size:12px;color:#f87171;font-weight:700">${S.selected.length} ta tanlandi</div><div style="display:flex;gap:8px"><button onclick="selAll()" style="background:#1a1a2e;border:1px solid #2a2a45;color:#888;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700">Barchasi</button><button onclick="bulkDel()" style="background:#dc2626;border:none;color:#fff;border-radius:8px;padding:5px 14px;font-size:11px;font-weight:700">🗑️ O'chir</button></div></div>`:""}`;
+}
+
+// ── Stats bar ─────────────────────────────────────────
+function renderStatsBar(){
+  const fl=S.students;
+  const n=fl.length,avgs=fl.map(s=>ovAvg(s));
+  const alo=avgs.filter(v=>v>=85).length,yax=avgs.filter(v=>v>=70&&v<85).length;
+  const past=avgs.filter(v=>v>0&&v<55).length;
+  const oravg=n?Math.round(avgs.reduce((a,b)=>a+b,0)/n):0;
+  return`<div style="padding:10px 12px 0">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px">
+      ${[["Jami",n,"#a78bfa"],["A'lo",alo,"#34d399"],["Yaxshi",yax,"#60a5fa"],["Past",past,"#f87171"],["O'rta%",oravg,"#fbbf24"]].map(([l,v,c])=>`<div style="background:#0f0f1a;border:1px solid ${c}33;border-radius:10px;padding:7px 4px;text-align:center"><div style="font-size:17px;font-weight:900;color:${c};font-family:monospace">${v}${l==="O'rta%"?"%":""}</div><div style="font-size:8px;color:#555">${l}</div></div>`).join("")}
+    </div>
+    <div style="display:flex;gap:6px">
+      ${["list","stats"].map(t=>`<div onclick="set({tab:'${t}'})" style="padding:5px 14px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;border:1.5px solid ${S.tab===t?"#a78bfa":"#2a2a45"};color:${S.tab===t?"#a78bfa":"#555"};background:${S.tab===t?"#a78bfa18":"transparent"}">${t==="list"?"📋 Ro'yxat":"📊 Statistika"}</div>`).join("")}
+    </div>
+  </div>`;
+}
+
+// ── Search ────────────────────────────────────────────
+function renderSearch(){
+  return`<div style="padding:8px 12px 0">
+    <div style="display:flex;align-items:center;gap:8px;background:#0f0f1a;border:1.5px solid #2a2a45;border-radius:999px;padding:9px 16px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input value="${esc(S.search)}" oninput="doSearch(this.value)" placeholder="O'quvchi, filial, guruh..." style="flex:1;background:transparent;border:none;outline:none;color:#e2e8f0;font-size:13px"/>
+      ${S.search?`<span onclick="doSearch('')" style="color:#444;cursor:pointer">✕</span>`:""}
+    </div>
+    <div style="display:flex;gap:5px;padding-top:6px;align-items:center">
+      <span style="font-size:9px;color:#555;flex-shrink:0">Saralash:</span>
+      ${[["jami","Jami"],["math","Mat."],["ingliz","Ing."],["muammo","Muam."],["ism","Ism"]].map(([k,l])=>`<div onclick="doSort('${k}')" style="padding:3px 8px;border-radius:20px;font-size:9px;font-weight:700;cursor:pointer;border:1px solid ${S.sortBy===k?"#a78bfa":"#2a2a45"};color:${S.sortBy===k?"#a78bfa":"#555"};background:${S.sortBy===k?"#a78bfa18":"transparent"};white-space:nowrap">${l}${S.sortBy===k?(S.sortAsc?"↑":"↓"):""}</div>`).join("")}
+    </div>
+  </div>`;
+}
+
+// ── Accordion filial list ─────────────────────────────
+function getFiltered(filialFilter){
+  let fl=S.students.filter(s=>
+    s.name.toLowerCase().includes(S.search.toLowerCase())||
+    (s.filial||"").toLowerCase().includes(S.search.toLowerCase())||
+    (s.guruh||"").toLowerCase().includes(S.search.toLowerCase())
+  );
+  if(filialFilter&&filialFilter!=="Barchasi") fl=fl.filter(s=>s.filial===filialFilter);
+  fl.sort((a,b)=>{
+    if(S.sortBy==="ism")return S.sortAsc?a.name.localeCompare(b.name):b.name.localeCompare(a.name);
+    const va=S.sortBy==="math"?avg(a.scores[0]):S.sortBy==="ingliz"?avg(a.scores[1]):S.sortBy==="muammo"?avg(a.scores[2]):ovAvg(a);
+    const vb=S.sortBy==="math"?avg(b.scores[0]):S.sortBy==="ingliz"?avg(b.scores[1]):S.sortBy==="muammo"?avg(b.scores[2]):ovAvg(b);
+    return S.sortAsc?va-vb:vb-va;
+  });
+  return fl;
+}
+
+function studentCard(s,rank){
+  const ov=ovAvg(s),g=grade(ov),isSel=S.selected.includes(s.id);
+  const rc=rank===1?"#fbbf24":rank===2?"#94a3b8":rank===3?"#cd7f32":"#2a2a45";
+  if(S.selectMode)return`<div onclick="toggleSel('${s.id}')" style="background:${isSel?"#1a0a0a":"#0f0f1a"};border:1.5px solid ${isSel?"#f87171":"#1a1a2e"};border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:7px;cursor:pointer">
+    <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${isSel?"#f87171":"#2a2a45"};background:${isSel?"#f87171":"transparent"};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;color:#000">${isSel?"✓":""}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:${isSel?"#f87171":"#e2e8f0"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>${s.guruh?`<div style="font-size:9px;color:#555">${esc(s.guruh)}</div>`:""}</div>
+    <div style="font-size:18px;font-weight:900;color:${isSel?"#f87171":g.c};font-family:monospace">${ov}%</div>
+  </div>`;
+  return`<div style="background:#0f0f1a;border:1.5px solid #1a1a2e;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:8px;margin-bottom:7px">
+    <div style="font-size:10px;font-weight:900;color:${rc};width:18px;text-align:center;flex-shrink:0;font-family:monospace">${rank}</div>
+    <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+      <div class="iBtn" onclick="editN('${s.id}')" style="background:#4f46e522;border-color:#4f46e555">✏️</div>
+      <div class="iBtn" onclick="delC('${s.id}')" style="background:#dc262622;border-color:#dc262655">🗑️</div>
+    </div>
+    <div onclick="openDet('${s.id}')" style="flex:1;cursor:pointer;min-width:0">
+      <div style="font-size:14px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
+      <div style="font-size:9px;color:#555;margin-top:1px">${s.guruh?esc(s.guruh):""}</div>
+      <div style="display:flex;gap:8px;margin-top:3px">${SUBJ.map((_,si)=>avg(s.scores[si])>0?`<span style="font-size:9px;color:${SCOL[si]}">${["M","I","T"][si]}: ${avg(s.scores[si])}%</span>`:"").filter(Boolean).join("")}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <button onclick="openScore('${s.id}')" style="background:#1a1a2e;border:1px solid #2a2a45;color:#a78bfa;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700">+ Ball</button>
+      <div onclick="openDet('${s.id}')" style="text-align:right;cursor:pointer">
+        <div style="font-size:20px;font-weight:900;color:${g.c};font-family:monospace">${ov}%</div>
+        <div style="font-size:9px;color:${g.c};background:${g.c}22;border-radius:6px;padding:2px 5px">${g.l}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderAccordion(){
+  if(!S.students.length)return`<div style="text-align:center;color:#2a2a45;padding:50px 0;font-size:13px">Hali o'quvchi yo'q. ＋ yoki 📂 CSV</div>`;
+  const filials=["Barchasi",...new Set(S.students.map(s=>s.filial).filter(Boolean))].sort((a,b)=>a==="Barchasi"?-1:a.localeCompare(b));
+  return filials.map(f=>{
+    const isOpen=S.openFilial===f;
+    const fl=getFiltered(f);
+    const n=fl.length;
+    const oravg=n?Math.round(fl.reduce((s,x)=>s+ovAvg(x),0)/n):0;
+    const g=grade(oravg);
+    return`<div style="margin-bottom:8px">
+      <div onclick="toggleAcc('${f}')" style="background:${isOpen?"#12122a":"#0f0f1a"};border:1.5px solid ${isOpen?"#a78bfa":"#1a1a2e"};border-radius:${isOpen?"12px 12px 0 0":"12px"};padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+        <div style="font-size:14px;font-weight:900;color:${isOpen?"#a78bfa":"#e2e8f0"};flex:1">${f==="Barchasi"?"🏫 Barchasi":esc(f)}</div>
+        <div style="font-size:11px;color:#555;font-family:monospace">${n} ta</div>
+        ${n>0?`<div style="font-size:14px;font-weight:900;color:${g.c};font-family:monospace">${oravg}%</div>`:""}
+        <div style="font-size:12px;color:${isOpen?"#a78bfa":"#555"};transition:transform 0.3s;transform:${isOpen?"rotate(180deg)":"rotate(0)"}"">▼</div>
+      </div>
+      <div class="acc-content ${isOpen?"open":""}" style="border:${isOpen?"1.5px":"0"} solid #a78bfa44;border-top:none;border-radius:0 0 12px 12px;padding:${isOpen?"10px 10px 6px":"0"}">
+        ${isOpen?(n===0?`<div style="text-align:center;color:#2a2a45;padding:20px;font-size:12px">Hech kim topilmadi</div>`:fl.map((s,i)=>studentCard(s,i+1)).join("")):""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── Filial statistics ─────────────────────────────────
+function renderFilialStats(){
+  const filials=[...new Set(S.students.map(s=>s.filial).filter(Boolean))].sort();
+  if(!filials.length)return`<div style="text-align:center;color:#2a2a45;padding:40px;font-size:13px">CSV yuklagandan so'ng ko'rinadi</div>`;
+  return`<div style="padding:10px 12px 40px">${filials.map(f=>{
+    const fl=S.students.filter(s=>s.filial===f);
+    const n=fl.length,avgs=fl.map(s=>ovAvg(s));
+    const oravg=n?Math.round(avgs.reduce((a,b)=>a+b,0)/n):0;
+    const alo=avgs.filter(v=>v>=85).length,yax=avgs.filter(v=>v>=70&&v<85).length,past=avgs.filter(v=>v>0&&v<55).length;
+    const g=grade(oravg);
+    const top3=[...fl].sort((a,b)=>ovAvg(b)-ovAvg(a)).slice(0,3);
+    return`<div style="background:#0f0f1a;border:1.5px solid #1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:900;color:#e2e8f0">${esc(f)}</div>
+        <div style="text-align:right"><div style="font-size:22px;font-weight:900;color:${g.c};font-family:monospace">${oravg}%</div><div style="font-size:9px;color:${g.c};background:${g.c}22;border-radius:6px;padding:2px 8px">${g.l}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+        ${[["Jami",n,"#a78bfa"],["A'lo",alo,"#34d399"],["Yaxshi",yax,"#60a5fa"],["Past",past,"#f87171"]].map(([l,v,c])=>`<div style="background:#07070f;border:1px solid ${c}33;border-radius:8px;padding:6px 4px;text-align:center"><div style="font-size:15px;font-weight:900;color:${c};font-family:monospace">${v}</div><div style="font-size:8px;color:#555">${l}</div></div>`).join("")}
+      </div>
+      <div style="font-size:10px;color:#555;margin-bottom:5px">Top 3:</div>
+      ${top3.map((s,i)=>{const ov=ovAvg(s),gc=grade(ov);return`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1a1a2e"><span style="font-size:10px;font-weight:900;color:${["#fbbf24","#94a3b8","#cd7f32"][i]};width:16px">${i+1}</span><span style="flex:1;font-size:12px;color:#e2e8f0">${esc(s.name)}</span><span style="font-size:12px;font-weight:700;color:${gc.c};font-family:monospace">${ov}%</span></div>`;}).join("")}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+// ── Detail ────────────────────────────────────────────
+function renderDetail(){
+  const s=S.active;if(!s)return"";
+  const ov=ovAvg(s),g=grade(ov);
+  const blocks=SUBJ.map((subj,si)=>{
+    const scores=s.scores[si]||[];const days=(s.days&&s.days[si])||[];
+    const sorted=scores.map((v,i)=>({v,d:days[i]||"",i})).sort((a,b)=>a.d.localeCompare(b.d));
+    const ei=S.editIdx;
+    const rows=sorted.map(({v,d,i})=>{
+      if(ei&&ei.si===si&&ei.idx===i)return`<div style="background:${SCOL[si]}0e;border:1px solid ${SCOL[si]}44;border-radius:10px;padding:10px;margin-bottom:6px">
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <input id="eSI" value="${esc(BUF.editScore)}" placeholder="12/20 yoki 85" oninput="liveES(this.value)" style="flex:1;background:#07070f;border:1.5px solid ${SCOL[si]};color:#e2e8f0;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:monospace"/>
+          <input type="date" id="eDI" value="${BUF.editDate}" onchange="BUF.editDate=this.value" style="flex:1;background:#07070f;border:1.5px solid #2a2a45;color:#888;border-radius:8px;padding:8px 10px;font-size:12px;outline:none"/>
+        </div>
+        <div id="ePrev" style="font-size:10px;color:${SCOL[si]};margin-bottom:5px">${BUF.editScore&&parseF(BUF.editScore)!==null?`→ ${parseF(BUF.editScore)}% (${grade(parseF(BUF.editScore)).l})`:""}</div>
+        <div id="eErr" style="color:#f87171;font-size:10px;margin-bottom:5px;display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button onclick="saveEE(${si},${i})" style="flex:1;background:${SCOL[si]};color:#000;border:none;border-radius:8px;padding:7px;font-weight:700;font-size:12px">✓ Saqlash</button>
+          <button onclick="cancelE()" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:8px;padding:7px;font-size:12px">Bekor</button>
+        </div>
+      </div>`;
+      return`<div style="display:flex;align-items:center;gap:8px;background:#0f0f1a;border-radius:10px;padding:7px 10px;margin-bottom:5px">
+        <div style="flex:1"><span style="font-family:monospace;font-weight:700;color:${SCOL[si]};font-size:13px">${v}%</span>${d?`<span style="font-size:10px;color:#444;margin-left:8px">${fmt(d)}</span>`:""}</div>
+        <div class="iBtn" onclick="startE(${si},${i},${v},'${d}')" style="background:#4f46e522;border-color:#4f46e544">✏️</div>
+        <div class="iBtn" onclick="delE(${si},${i})" style="background:#dc262622;border-color:#dc262644">🗑️</div>
+      </div>`;
+    }).join("");
+    return`<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;font-weight:700;color:${SCOL[si]}">${subj}</span>
+        <span style="font-size:10px;color:#555;font-family:monospace">o'rta: ${avg(scores)}%</span>
+      </div>
+      <div style="background:#07070f;border-radius:12px;padding:8px;margin-bottom:6px;overflow-x:auto">${mkSVG(sorted.map(x=>x.v),sorted.map(x=>fmt(x.d)))}</div>
+      ${rows}
+    </div>`;
+  }).join("");
+  return`<div class="overlay" onclick="back()"><div class="modal az" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div><div style="font-size:18px;font-weight:900;color:#e2e8f0">${esc(s.name)}</div>
+      ${s.filial?`<div style="font-size:10px;color:#555;margin-top:2px">${esc(s.filial)}${s.guruh?" • "+esc(s.guruh):""}</div>`:""}
+      <div style="font-size:10px;color:#3a3a5a;margin-top:1px">Butun davr tahlili</div></div>
+      <div style="text-align:right"><div style="font-size:28px;font-weight:900;color:${g.c};font-family:monospace">${ov}%</div><div style="font-size:10px;color:${g.c};background:${g.c}22;border-radius:6px;padding:2px 8px">${g.l}</div></div>
+    </div>
+    ${blocks}
+    <button onclick="back()" style="width:100%;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:10px;padding:10px;font-size:12px;margin-top:4px">Yopish ✕</button>
+  </div></div>`;
+}
+
+// ── Import ────────────────────────────────────────────
+function renderImport(){
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet au" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 18px"></div>
+    <div style="font-size:17px;font-weight:900;color:#e2e8f0;margin-bottom:4px">📊 CSV / Sheets yuklash</div>
+    <div style="font-size:11px;color:#555;margin-bottom:14px">Har safar yangi ma'lumotlar avvalgilarga <span style="color:#34d399;font-weight:700">qo'shiladi</span></div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:#60a5fa;margin-bottom:5px">🔗 Google Sheets / CSV link</div>
+      <input class="inp" id="urlInp" value="${esc(S.importUrl)}" oninput="BUF.importUrl=this.value" placeholder="https://docs.google.com/spreadsheets/..." style="font-size:12px"/>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:#555;margin-bottom:5px">📅 Sessiya sanasi (ixtiyoriy)</div>
+      <input type="date" id="dateInp" class="inp" style="color:#888;font-size:13px"/>
+    </div>
+    ${S.csvLoading?`<div style="color:#a78bfa;font-size:12px;text-align:center;padding:10px">⏳ Yuklanmoqda...</div>`:""}
+    ${S.csvErr?`<div style="color:#f87171;font-size:11px;padding:8px 10px;background:#f8717115;border-radius:8px;margin-bottom:10px">${esc(S.csvErr)}</div>`:""}
+    <button onclick="loadLink()" style="width:100%;background:linear-gradient(135deg,#1e3a5f,#1a4a8a);color:#60a5fa;border:1px solid #60a5fa44;border-radius:12px;padding:12px;font-weight:700;font-size:13px;margin-bottom:8px">🔗 Linkdan yuklash</button>
+    <button onclick="document.getElementById('fileInp').click();back();" style="width:100%;background:linear-gradient(135deg,#052e16,#064e24);color:#34d399;border:1px solid #34d39944;border-radius:12px;padding:12px;font-weight:700;font-size:13px;margin-bottom:8px">📂 Fayl tanlash (.csv yoki .html)</button>
+    <button onclick="back()" style="width:100%;background:#1a1a2e;border:1px solid #2a2a45;color:#666;border-radius:12px;padding:11px;font-size:13px">Bekor</button>
+  </div></div>`;
+}
+
+// ── Import report ─────────────────────────────────────
+function renderImportReport(){
+  const r=S.importReport;if(!r)return"";
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #34d39944;border-radius:18px;padding:22px 18px;width:100%;max-width:340px" class="az" onclick="event.stopPropagation()">
+    <div style="font-size:28px;text-align:center;margin-bottom:8px">✅</div>
+    <div style="font-size:16px;font-weight:900;color:#34d399;text-align:center;margin-bottom:14px">Yuklandi!</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="background:#0f0f1a;border:1px solid #34d39933;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#34d399;font-family:monospace">${r.added}</div>
+        <div style="font-size:10px;color:#555">Yangi o'quvchi</div>
+      </div>
+      <div style="background:#0f0f1a;border:1px solid #60a5fa33;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#60a5fa;font-family:monospace">${r.updated}</div>
+        <div style="font-size:10px;color:#555">Yangilandi</div>
+      </div>
+    </div>
+    ${r.skipped&&r.skipped.length>0?`<div style="background:#f8717115;border:1px solid #f8717144;border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="font-size:11px;color:#f87171;font-weight:700;margin-bottom:6px">⚠️ O'tkazib yuborildi (${r.skipped.length} ta) — sinf yo'q:</div>
+      ${r.skipped.slice(0,4).map(sk=>`<div style="font-size:10px;color:#888;margin-bottom:2px">${esc(sk.name)} (${esc(sk.filial)})</div>`).join("")}
+      ${r.skipped.length>4?`<div style="font-size:10px;color:#555">...va yana ${r.skipped.length-4} ta</div>`:""}
+    </div>`:""}
+    ${r.merged_dupes&&r.merged_dupes.length>0?`<div style="background:#fbbf2415;border:1px solid #fbbf2444;border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="font-size:11px;color:#fbbf24;font-weight:700;margin-bottom:6px">🔀 Birlashtirildi (${r.merged_dupes.length} ta):</div>
+      ${r.merged_dupes.slice(0,3).map(d=>`<div style="font-size:10px;color:#888;margin-bottom:2px">"${esc(d[0])}" → "${esc(d[1])}"</div>`).join("")}
+    </div>`:""}
+    <button onclick="back()" style="width:100%;background:#34d399;color:#000;border:none;border-radius:10px;padding:10px;font-weight:700;font-size:13px">Yaxshi!</button>
+  </div></div>`;
+}
+
+// ── Add / Score sheets ────────────────────────────────
+function entryRows(){
+  return BUF.entries.map((en,idx)=>`
+  <div style="background:#0f0f1a;border:1px solid #1e1e33;border-radius:12px;padding:11px;margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:11px;color:#888">${idx+1}-natija</span>${BUF.entries.length>1?`<span onclick="rmE('${en.id}')" style="color:#f87171;font-size:15px;cursor:pointer">✕</span>`:""}</div>
+    <div style="display:flex;gap:5px;margin-bottom:8px">${STAB.map((lbl,si)=>`<div onclick="pickSi('${en.id}',${si})" style="flex:1;text-align:center;padding:6px 4px;border-radius:8px;font-size:10px;font-weight:600;cursor:pointer;border:1.5px solid ${en.si===si?SCOL[si]:"#1e1e33"};color:${en.si===si?SCOL[si]:"#555"};background:${en.si===si?SCOL[si]+"18":"transparent"}">${lbl}</div>`).join("")}</div>
+    <div style="display:flex;gap:7px">
+      <div style="flex:1"><div style="font-size:10px;color:#555;margin-bottom:3px">Natija</div><input value="${esc(en.score)}" placeholder="12/20 yoki 85" oninput="liveScore('${en.id}',this.value)" style="width:100%;background:#07070f;border:1.5px solid ${SCOL[en.si]}44;color:#e2e8f0;border-radius:8px;padding:8px 9px;font-size:13px;outline:none;font-family:monospace"/></div>
+      <div style="flex:1"><div style="font-size:10px;color:#555;margin-bottom:3px">Sana</div><input type="date" value="${en.date}" onchange="liveDate('${en.id}',this.value)" style="width:100%;background:#07070f;border:1.5px solid #2a2a45;color:#888;border-radius:8px;padding:8px 9px;font-size:12px;outline:none"/></div>
+    </div>
+    <div id="prev_${en.id}" style="margin-top:5px;font-size:10px;color:${SCOL[en.si]}">${en.score&&parseF(en.score)!==null?`→ ${parseF(en.score)}% (${grade(parseF(en.score)).l})`:""}</div>
+  </div>`).join("");
+}
+
+function renderAddSheet(){
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet au" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 18px"></div>
+    <div style="font-size:17px;font-weight:900;color:#e2e8f0;margin-bottom:14px">O'quvchi qo'shish</div>
+    <div style="margin-bottom:12px"><div style="font-size:11px;color:#555;margin-bottom:5px">Familiya va ism</div><input class="inp" id="nameInp" placeholder="Abdullayev Islom" oninput="BUF.name=this.value" style="-webkit-appearance:none"/></div>
+    <div style="font-size:11px;color:#555;margin-bottom:8px">Natijalar <span style="color:#3a3a5a">(ixtiyoriy)</span></div>
+    <div id="entryList">${entryRows()}</div>
+    <div onclick="addE()" style="border:1.5px dashed #2a2a45;border-radius:12px;padding:10px;text-align:center;color:#3a3a5a;font-size:12px;cursor:pointer;margin-bottom:12px">+ Yana natija</div>
+    <div id="addErr" style="color:#f87171;font-size:11px;margin-bottom:10px;padding:8px 12px;background:#f8717118;border-radius:8px;display:none"></div>
+    <button class="btnG" onclick="saveStudent()">Saqlash</button>
+  </div></div>`;
+}
+function renderScoreSheet(){
+  const s=S.active;
+  return`<div class="sheet-bg" onclick="back()"><div class="sheet au" onclick="event.stopPropagation()">
+    <div style="width:40px;height:4px;background:#2a2a45;border-radius:4px;margin:0 auto 18px"></div>
+    <div style="font-size:15px;font-weight:900;color:#e2e8f0;margin-bottom:4px">${esc(s.name)}</div>
+    <div style="font-size:11px;color:#555;margin-bottom:14px">Yangi natija qo'shish</div>
+    <div id="entryList">${entryRows()}</div>
+    <div onclick="addE()" style="border:1.5px dashed #2a2a45;border-radius:12px;padding:10px;text-align:center;color:#3a3a5a;font-size:12px;cursor:pointer;margin-bottom:12px">+ Yana natija</div>
+    <div id="addErr" style="color:#f87171;font-size:11px;margin-bottom:10px;padding:8px 12px;background:#f8717118;border-radius:8px;display:none"></div>
+    <button class="btnG" onclick="saveScore()">Saqlash</button>
+  </div></div>`;
+}
+function renderEditName(){
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #a78bfa44;border-radius:18px;padding:22px 18px;width:100%;max-width:320px" class="az" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px;color:#e2e8f0">Ismni tahrirlash</div>
+    <input class="inp" id="eNI" value="${esc(S.active.name)}" oninput="BUF.name=this.value" style="-webkit-appearance:none"/>
+    <button onclick="doEN()" style="margin-top:12px;width:100%;background:#a78bfa;color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px">Saqlash</button>
+  </div></div>`;
+}
+function renderDelConfirm(){
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #f8717144;border-radius:18px;padding:22px 18px;width:100%;max-width:300px;text-align:center" class="az" onclick="event.stopPropagation()">
+    <div style="font-size:32px;margin-bottom:10px">🗑️</div>
+    <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:6px">O'chirishni tasdiqlang</div>
+    <div style="font-size:12px;color:#f87171;margin-bottom:16px">"${esc(S.active.name)}"</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="back()" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;color:#888;border-radius:10px;padding:10px;font-weight:700;font-size:13px">Bekor</button>
+      <button onclick="doDel()" style="flex:1;background:#dc2626;border:none;color:#fff;border-radius:10px;padding:10px;font-weight:700;font-size:13px">O'chir</button>
+    </div>
+  </div></div>`;
+}
+function renderTeacher(){
+  return`<div class="overlay" onclick="back()"><div style="background:#0b0b18;border:1.5px solid #a78bfa44;border-radius:18px;padding:22px 18px;width:100%;max-width:300px" class="az" onclick="event.stopPropagation()">
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px;color:#e2e8f0">Ustoz ismi</div>
+    <input class="inp" id="tInp" value="${esc(S.teacher)}" oninput="BUF.teacher=this.value" style="-webkit-appearance:none"/>
+    <button onclick="doST()" style="margin-top:12px;width:100%;background:#a78bfa;color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px">Saqlash</button>
+  </div></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════════════════
+function processRows(rows,sessionDate){
+  if(!rows.length){set({csvErr:"Ma'lumot topilmadi",csvLoading:false});return;}
+  const{students,added,updated,skipped,merged_dupes}=merge(rows,S.students,sessionDate);
+  sv("st_students",students);
+  set({students,page:"importReport",csvLoading:false,csvErr:"",
+    importReport:{added,updated,skipped,merged_dupes}});
+}
+
+document.getElementById("fileInp").addEventListener("change",function(e){
+  const file=e.target.files[0];if(!file)return;
+  const isHTML=file.name.toLowerCase().endsWith('.html')||file.name.toLowerCase().endsWith('.htm');
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const rows=isHTML?parseHTML(ev.target.result):parseCSV(ev.target.result);
+    processRows(rows,"");
+  };
+  reader.readAsText(file,"UTF-8");
+  e.target.value="";
+});
+
+async function loadLink(){
+  const url=(BUF.importUrl||document.getElementById("urlInp")?.value||"").trim();
+  if(!url){set({csvErr:"Link kiriting"});return;}
+  sv("st_importUrl",url);set({csvLoading:true,csvErr:"",importUrl:url});
+  try{
+    const idM=url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const gidM=url.match(/[?&]gid=(\d+)/);
+    let csvUrl=url;
+    if(idM){const gid=gidM?gidM[1]:"0";csvUrl=`https://docs.google.com/spreadsheets/d/${idM[1]}/export?format=csv&gid=${gid}`;}
+    const res=await fetch(csvUrl);
+    if(!res.ok)throw new Error("Server: "+res.status);
+    const rows=parseCSV(await res.text());
+    processRows(rows,document.getElementById("dateInp")?.value||"");
+  }catch(e){set({csvErr:"Xatolik: "+e.message,csvLoading:false});}
+}
+
+// ══════════════════════════════════════════════════════
+// LIVE UPDATES
+// ══════════════════════════════════════════════════════
+function liveScore(id,val){const en=BUF.entries.find(e=>e.id===id);if(!en)return;en.score=val;const p=parseF(val),el=document.getElementById(`prev_${id}`);if(el)el.textContent=(p!==null&&val.trim())?`→ ${p}% (${grade(p).l})`:"";;}
+function liveDate(id,val){const en=BUF.entries.find(e=>e.id===id);if(en)en.date=val;}
+function liveES(val){BUF.editScore=val;const p=parseF(val),el=document.getElementById("ePrev");if(el)el.textContent=(p!==null&&val.trim())?`→ ${p}% (${grade(p).l})`:"";;}
+function refreshEL(){const el=document.getElementById("entryList");if(el)el.innerHTML=entryRows();}
+function addE(){BUF.entries.push({id:uid(),si:0,score:"",date:""});refreshEL();}
+function rmE(id){if(BUF.entries.length<2)return;BUF.entries=BUF.entries.filter(e=>e.id!==id);refreshEL();}
+function pickSi(id,si){const en=BUF.entries.find(e=>e.id===id);if(en){en.si=Number(si);refreshEL();}}
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION & ACTIONS
+// ══════════════════════════════════════════════════════
+function back(){resetBuf();set({page:"list",active:null,editIdx:null,csvLoading:false,csvErr:""});}
+function go(page){resetBuf();set({page});}
+function toggleLang(){const l=S.lang==="uz"?"ru":"uz";sv("st_lang",l);set({lang:l});}
+function doSearch(v){S.search=v;render();}
+function doSort(k){if(S.sortBy===k)set({sortAsc:!S.sortAsc});else set({sortBy:k,sortAsc:false});}
+
+// Accordion
+function toggleAcc(f){set({openFilial:S.openFilial===f?null:f});}
+
+function openDet(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();set({page:"detail",active:{...s},editIdx:null});}}
+function openScore(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();set({page:"addScore",active:s});}}
+function editN(id){const s=S.students.find(x=>x.id===id);if(s){resetBuf();BUF.name=s.name;set({page:"editName",active:s});}}
+function delC(id){const s=S.students.find(x=>x.id===id);if(s)set({page:"delConfirm",active:s});}
+
+function toggleSM(){set({selectMode:!S.selectMode,selected:[]});}
+function toggleSel(id){const sel=S.selected.includes(id)?S.selected.filter(x=>x!==id):[...S.selected,id];set({selected:sel});}
+function selAll(){const fl=getFiltered(S.openFilial);const all=fl.map(s=>s.id);set({selected:S.selected.length===all.length?[]:all});}
+function bulkDel(){if(!S.selected.length)return;if(!confirm(`${S.selected.length} ta o'quvchi o'chirilsinmi?`))return;const all=S.students.filter(s=>!S.selected.includes(s.id));sv("st_students",all);set({students:all,selected:[],selectMode:false});}
+
+function saveStudent(){
+  const name=(BUF.name||document.getElementById("nameInp")?.value||"").trim();
+  if(!name){showErr("addErr","Ism kiriting");return;}
+  const sc=[[],[],[]],dy=[[],[],[]];
+  for(const en of BUF.entries){if(!en.score.trim())continue;const p=parseF(en.score);if(p===null){showErr("addErr",`"${en.score}" noto'g'ri`);return;}sc[en.si].push(p);dy[en.si].push(en.date||"");}
+  const ns=[...S.students,{id:uid(),name,scores:sc,days:dy}];
+  sv("st_students",ns);resetBuf();set({students:ns,page:"list"});
+}
+function saveScore(){
+  const s=S.active;if(!s)return;
+  const ns=[[],[],[]],nd=[[],[],[]];
+  for(const en of BUF.entries){if(!en.score.trim())continue;const p=parseF(en.score);if(p===null){showErr("addErr",`"${en.score}" noto'g'ri`);return;}ns[en.si].push(p);nd[en.si].push(en.date||"");}
+  const dy=s.days||[[],[],[]];
+  const upd={...s,scores:s.scores.map((a,i)=>[...a,...ns[i]]),days:dy.map((a,i)=>[...a,...nd[i]])};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);resetBuf();set({students:all,page:"list",active:null});
+}
+function doEN(){
+  const name=(BUF.name||document.getElementById("eNI")?.value||"").trim();if(!name)return;
+  const all=S.students.map(x=>x.id===S.active.id?{...x,name}:x);
+  sv("st_students",all);resetBuf();set({students:all,page:"list",active:null});
+}
+function doDel(){const all=S.students.filter(x=>x.id!==S.active.id);sv("st_students",all);set({students:all,page:"list",active:null});}
+function doST(){const name=(BUF.teacher||document.getElementById("tInp")?.value||"").trim()||"Ustoz";sv("st_teacher",name);resetBuf();set({teacher:name,page:"list"});}
+
+function startE(si,idx,v,d){BUF.editScore=String(v);BUF.editDate=d;set({editIdx:{si:Number(si),idx:Number(idx)}});}
+function cancelE(){BUF.editScore="";BUF.editDate="";set({editIdx:null});}
+function saveEE(si,idx){
+  const val=BUF.editScore||document.getElementById("eSI")?.value||"";
+  const date=BUF.editDate||document.getElementById("eDI")?.value||"";
+  const p=parseF(val);if(p===null){const el=document.getElementById("eErr");if(el){el.style.display="block";el.textContent="Noto'g'ri format";}return;}
+  const s=S.active;
+  const newSc=s.scores.map((arr,i)=>i==si?arr.map((v,j)=>j==idx?p:v):arr);
+  const newDy=(s.days||[[],[],[]]).map((arr,i)=>i==si?arr.map((v,j)=>j==idx?date:v):arr);
+  const upd={...s,scores:newSc,days:newDy};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);BUF.editScore="";BUF.editDate="";set({students:all,active:upd,editIdx:null});
+}
+function delE(si,idx){
+  const s=S.active;
+  const newSc=s.scores.map((arr,i)=>i==si?arr.filter((_,j)=>j!=idx):arr);
+  const newDy=(s.days||[[],[],[]]).map((arr,i)=>i==si?arr.filter((_,j)=>j!=idx):arr);
+  const upd={...s,scores:newSc,days:newDy};
+  const all=S.students.map(x=>x.id===upd.id?upd:x);
+  sv("st_students",all);set({students:all,active:upd,editIdx:null});
+}
+function showErr(id,msg){const el=document.getElementById(id);if(el){el.style.display="block";el.textContent=msg;}}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+resetBuf();render();
+</script>
+</body>
+</html>
