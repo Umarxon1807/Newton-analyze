@@ -548,11 +548,39 @@ const S={
   selected:[],selectMode:false,
   importReport:null,tab:"list",
   confirmQueue:[],confirmIdx:0,
+  fsLoading:true,fsErr:"",
 };
 const set=(p,nr)=>{Object.assign(S,p);if(!nr)render();};
 
 let BUF={entries:[],name:"",filial:"",guruh:"",editScore:"",editDate:"",importUrl:""};
 function resetBuf(){BUF={entries:[{id:uid(),si:0,score:"",date:""}],name:"",filial:"",guruh:"",editScore:"",editDate:"",importUrl:S.importUrl};}
+
+// ═══════════════════════════════════════════════════════════
+// FIRESTORE STATUS BANNER
+// ═══════════════════════════════════════════════════════════
+function renderFsStatus(){
+  if(!S.fsLoading&&!S.fsErr)return"";
+  if(S.fsErr)return`<div style="background:#1a0808;border-bottom:1px solid #f8717144;padding:8px 12px;display:flex;align-items:flex-start;gap:8px">
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:2px">⚠️ Firebase ulanmadi!</div>
+      <div style="font-size:10px;color:#a87070;line-height:1.4">Boshqa qurilmada ma'lumot ko'rinmayapti.<br>Firebase Console → Firestore → Rules → <span style="color:#fbbf24;font-family:monospace">allow read, write: if true;</span></div>
+    </div>
+    <button onclick="retryFs()" style="background:#f87171;color:#000;border:none;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;flex-shrink:0;white-space:nowrap">🔄 Qayta</button>
+  </div>`;
+  return`<div style="background:#07070f;border-bottom:1px solid #a78bfa33;padding:5px 12px;font-size:10px;color:#a78bfa;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px"><span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> Bulutdan yuklanmoqda...</div>
+  <style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>`;
+}
+
+function retryFs(){
+  S.fsLoading=true;S.fsErr="";render();
+  _db.collection("newton").doc("students").get()
+    .then(snap=>{
+      S.fsLoading=false;
+      if(snap.exists){const d=snap.data();if(d&&d.students&&d.students.length){S.students=d.students;try{localStorage.setItem("st_students",JSON.stringify(d.students));localStorage.setItem("st_students_time",String(d.updated||Date.now()));}catch{}}}
+      render();
+    })
+    .catch(e=>{S.fsLoading=false;S.fsErr=e.message;render();});
+}
 
 // ═══════════════════════════════════════════════════════════
 // RENDER
@@ -575,7 +603,7 @@ function render(){
   else if(p==="activityLog")ov=isAdmin()?renderActivityLog():"";
   else if(p==="changePass")ov=isAdmin()?renderChangePass():"";
   document.getElementById("root").innerHTML=
-    renderHeader()+renderStatsBar()+renderSearch()+
+    renderHeader()+renderFsStatus()+renderStatsBar()+renderSearch()+
     (S.tab==="stats"?renderFilialStats():`<div id="accordionWrap" style="padding:10px 12px 40px">${renderAccordion()}</div>`)+ov;
   if(p==="staffMgmt")setTimeout(loadStaffList,100);
   if(p==="activityLog")setTimeout(loadActivityLog,100);
@@ -1367,10 +1395,10 @@ render();
 // Real-time listener — Firestore dan o'zgarish bo'lsa darhol yangilanadi
 _db.collection("newton").doc("students").onSnapshot(
   snap=>{
-    if(!snap.exists)return;
+    S.fsLoading=false;S.fsErr="";
+    if(!snap.exists){render();return;}
     const data=snap.data();
-    if(!data||!data.students||!data.students.length)return;
-    // Har doim Firestore dan yuklaymiz — time comparison yo'q
+    if(!data||!data.students||!data.students.length){render();return;}
     S.students=data.students;
     try{
       localStorage.setItem("st_students",JSON.stringify(data.students));
@@ -1380,6 +1408,8 @@ _db.collection("newton").doc("students").onSnapshot(
     console.log("✅ Firestore:",data.students.length,"o'quvchi yuklandi");
   },
   err=>{
+    S.fsLoading=false;S.fsErr=err.message||"Ulanish xatosi";
+    render();
     console.error("❌ Firestore xato:",err);
   }
 );
